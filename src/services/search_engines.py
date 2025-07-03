@@ -839,37 +839,55 @@ class SearchEngineService:
             # Добавляем найденные email адреса как альтернативные контакты
             processed['scientific_identifiers']['alternative_emails'] = webpage_contacts['emails'][:3]
         
-        # Извлекаем ORCID из найденных веб-сайтов
+        # Извлекаем ORCID из найденных веб-сайтов с улучшенным алгоритмом выбора
         logger.info(f"DEBUG: Проверяем websites в webpage_contacts: {webpage_contacts.get('websites') is not None}")
         if webpage_contacts.get('websites'):
-            websites = webpage_contacts['websites']
-            logger.info(f"DEBUG: Найдено {len(websites)} веб-сайтов для анализа ORCID")
+            websites_list = webpage_contacts['websites']
+            logger.info(f"DEBUG: Найдено {len(websites_list)} веб-сайтов для анализа ORCID")
             
-            orcid_pattern = r'orcid\.org/([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4})'
-            found_orcids = []
+            # Логируем первые 10 сайтов для анализа
+            logger.info(f"INFO: Первые 10 websites для анализа:")
+            for i, site in enumerate(websites_list[:10]):
+                logger.info(f"INFO:   {i+1}. {site}")
             
-            for i, website in enumerate(websites[:10]):  # Проверяем только первые 10
-                if isinstance(website, str):
-                    logger.info(f"DEBUG: Анализируем website {i+1}: {website[:100]}...")  # Ограничиваем длину для логов
-                    orcid_match = re.search(orcid_pattern, website)
-                    if orcid_match:
-                        found_orcid = orcid_match.group(1)
-                        found_orcids.append(found_orcid)
-                        logger.info(f"DEBUG: Найден ORCID: {found_orcid}")
+            # Проверяем, есть ли ORCID в принципе в данных
+            orcid_count = sum(1 for site in websites_list if 'orcid' in str(site).lower())
+            logger.info(f"INFO: Количество ссылок содержащих 'orcid': {orcid_count}")
             
-            # Удаляем дубликаты и обновляем ORCID, если он не был найден ранее
-            found_orcids = list(set(found_orcids))
-            logger.info(f"DEBUG: Всего уникальных ORCID найдено: {len(found_orcids)}, текущий ORCID в processed: {processed['scientific_identifiers']['orcid_id']}")
-            
-            if found_orcids and (processed['scientific_identifiers']['orcid_id'] == 'Не найден' or not processed['scientific_identifiers']['orcid_id'] or processed['scientific_identifiers']['orcid_id'] == ''):
-                processed['scientific_identifiers']['orcid_id'] = found_orcids[0]
-                logger.info(f"ORCID извлечен из веб-анализа: {found_orcids[0]}")
+            try:
+                # Получаем контекстную информацию для улучшенного ранжирования
+                owner_name = processed.get('basic_info', {}).get('owner_name', 'Не определено')
+                email_for_correspondence = processed.get('scientific_identifiers', {}).get('email_for_correspondence')
                 
-                # Добавляем все найденные ORCID если их несколько
-                if len(found_orcids) > 1:
-                    processed['scientific_identifiers']['all_orcid_found'] = found_orcids
-            else:
-                logger.info(f"DEBUG: ORCID не обновлен. found_orcids: {found_orcids}, current_orcid_id: {processed['scientific_identifiers']['orcid_id']}")
+                # Собираем все валидные ORCID с дополнительной информацией
+                logger.info(f"INFO: Вызываем _extract_all_orcids_from_websites с контекстом: owner_name='{owner_name}', email='{email_for_correspondence}'...")
+                found_orcids = self._extract_all_orcids_from_websites(websites_list, owner_name=owner_name, email=email_for_correspondence)
+                logger.info(f"INFO: _extract_all_orcids_from_websites вернула: {len(found_orcids) if found_orcids else 0} ORCID")
+                
+                if found_orcids:
+                    # Выбираем наиболее релевантный ORCID
+                    logger.info(f"INFO: Вызываем _select_best_orcid...")
+                    best_orcid = self._select_best_orcid(found_orcids)
+                    logger.info(f"INFO: Выбран лучший ORCID из {len(found_orcids)} найденных: {best_orcid['orcid']} (рейтинг: {best_orcid['relevance_score']:.2f})")
+                    
+                    # Обновляем ORCID, если он не был найден ранее или текущий неполный
+                    current_orcid = processed['scientific_identifiers']['orcid_id']
+                    if current_orcid == 'Не найден' or not current_orcid or current_orcid == '':
+                        processed['scientific_identifiers']['orcid_id'] = best_orcid['orcid']
+                        logger.info(f"ORCID извлечен из веб-анализа: {best_orcid['orcid']}")
+                    else:
+                        logger.info(f"INFO: ORCID не обновлен, текущий: {current_orcid}, найденный: {best_orcid['orcid']}")
+                    
+                    # Добавляем все найденные ORCID для отладки
+                    logger.info(f"INFO: Все найденные ORCID: {[o['orcid'] for o in found_orcids]}")
+                    if len(found_orcids) > 1:
+                        processed['scientific_identifiers']['all_orcid_found'] = [o['orcid'] for o in found_orcids]
+                else:
+                    logger.info(f"INFO: Валидные ORCID не найдены в веб-анализе")
+            except Exception as e:
+                logger.error(f"ERROR: Ошибка при обработке ORCID из веб-анализа: {str(e)}")
+                import traceback
+                logger.error(f"ERROR: Traceback: {traceback.format_exc()}")
         else:
             logger.info(f"DEBUG: Нет веб-сайтов в webpage_contacts для анализа ORCID")
         
@@ -1537,4 +1555,526 @@ class SearchEngineService:
             return True
         
         return False
+    
+    def _extract_all_orcids_from_websites(self, websites: List[str], owner_name: str = None, email: str = None) -> List[Dict[str, Any]]:
+        """Извлекает все валидные ORCID из списка веб-сайтов с дополнительной информацией"""
+        
+        logger.info(f"INFO: Начинаем анализ {len(websites)} веб-сайтов для поиска ORCID")
+        
+        found_orcids = []
+        orcid_pattern = r'orcid\.org/([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4})'
+        
+        for i, website in enumerate(websites):
+            if isinstance(website, str):
+                logger.info(f"DEBUG: Анализируем website {i+1}: {website[:100]}...")
+                orcid_match = re.search(orcid_pattern, website, re.IGNORECASE)
+                if orcid_match:
+                    found_orcid = orcid_match.group(1)
+                    logger.info(f"DEBUG: Найден ORCID: {found_orcid}")
+                    
+                    # Создаем объект с дополнительной информацией
+                    orcid_info = {
+                        'orcid': found_orcid,
+                        'position': i,
+                        'url': website,
+                        'domain': self._extract_domain(website),
+                        'is_direct_orcid_url': 'orcid.org' in website.lower(),
+                        'url_completeness': len(website)
+                    }
+                    
+                    # Проверяем на дубликаты
+                    if not any(existing['orcid'] == found_orcid for existing in found_orcids):
+                        found_orcids.append(orcid_info)
+                        logger.info(f"INFO: Добавлен ORCID {found_orcid} в позиции {i}")
+                    else:
+                        logger.info(f"INFO: ORCID {found_orcid} уже найден ранее")
+        
+        logger.info(f"INFO: Анализ завершен. Всего уникальных ORCID найдено: {len(found_orcids)}")
+        
+        if found_orcids:
+            # Вычисляем релевантность для каждого ORCID с переданными контекстными данными
+            for orcid_info in found_orcids:
+                relevance_score = self._calculate_orcid_relevance(
+                    orcid_info, 
+                    owner_name=owner_name, 
+                    email=email, 
+                    all_websites=websites
+                )
+                orcid_info['relevance_score'] = relevance_score
+                logger.info(f"INFO: ORCID {orcid_info['orcid']} получил релевантность {relevance_score:.3f}")
+        
+        return found_orcids
+    
+    def _calculate_orcid_relevance(self, orcid_info: Dict[str, Any], owner_name: str = None, email: str = None, all_websites: List[str] = None) -> float:
+        """Вычисляет релевантность ORCID на основе различных факторов"""
+        
+        score = 0.0
+        detailed_scores = {}
+        
+        # 1. Фактор позиции (чем раньше найден, тем выше score) - вес 25%
+        position_score = max(0, 1.0 - (orcid_info['position'] / 100))
+        score += position_score * 0.25
+        detailed_scores['position'] = position_score * 0.25
+        
+        # 2. Фактор прямого URL ORCID - вес 20%
+        direct_url_score = 0.0
+        if orcid_info['is_direct_orcid_url']:
+            direct_url_score = 1.0
+            score += 0.20
+        detailed_scores['direct_url'] = direct_url_score * 0.20
+        
+        # 3. Фактор полноты URL - вес 10%
+        completeness_score = 0.0
+        if orcid_info['url_completeness'] > 50:
+            completeness_score = min(1.0, orcid_info['url_completeness'] / 200)
+            score += completeness_score * 0.10
+        detailed_scores['completeness'] = completeness_score * 0.10
+        
+        # 4. Фактор домена - вес 15%
+        domain = orcid_info.get('domain', '').lower()
+        domain_score = 0.0
+        if 'orcid.org' in domain:
+            domain_score = 1.0
+        elif any(academic_domain in domain for academic_domain in ['edu', 'ac.', 'university', 'institute']):
+            domain_score = 0.8
+        elif any(scientific_domain in domain for scientific_domain in ['researchgate', 'scholar', 'pubmed', 'ncbi']):
+            domain_score = 0.6
+        score += domain_score * 0.15
+        detailed_scores['domain'] = domain_score * 0.15
+        
+        # 5. НОВЫЙ: Семантическая близость к владельцу email - вес 15%
+        name_proximity_score = 0.0
+        if owner_name:
+            name_proximity_score = self._calculate_name_proximity_score(orcid_info, owner_name)
+            score += name_proximity_score * 0.15
+        detailed_scores['name_proximity'] = name_proximity_score * 0.15
+        
+        # 6. НОВЫЙ: Анализ доменной принадлежности по email - вес 10%
+        domain_affinity_score = 0.0
+        if email:
+            domain_affinity_score = self._calculate_domain_affinity_score(orcid_info, email)
+            score += domain_affinity_score * 0.10
+        detailed_scores['domain_affinity'] = domain_affinity_score * 0.10
+        
+        # 7. НОВЫЙ: Качество источника - вес 5%
+        source_quality_score = self._calculate_source_quality_score(orcid_info)
+        score += source_quality_score * 0.05
+        detailed_scores['source_quality'] = source_quality_score * 0.05
+        
+        # Нормализуем score
+        score = min(1.0, score)
+        
+        logger.info(f"INFO: Детальная релевантность для ORCID {orcid_info['orcid']}: позиция={detailed_scores['position']:.3f}, прямой_URL={detailed_scores['direct_url']:.3f}, домен={detailed_scores['domain']:.3f}, близость_имени={detailed_scores['name_proximity']:.3f}, аффинность_домена={detailed_scores['domain_affinity']:.3f}, качество_источника={detailed_scores['source_quality']:.3f}, ИТОГО={score:.3f}")
+        
+        return score
+    
+    def _select_best_orcid(self, found_orcids: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Выбирает наиболее релевантный ORCID из списка найденных"""
+        
+        if not found_orcids:
+            return None
+        
+        logger.info(f"INFO: Анализ всех найденных ORCID для выбора лучшего:")
+        for orcid in found_orcids:
+            logger.info(f"INFO:   - {orcid['orcid']}: релевантность {orcid['relevance_score']:.2f}, позиция {orcid['position']}, домен {orcid['domain']}")
+        
+        # Сортируем по релевантности
+        sorted_orcids = sorted(found_orcids, key=lambda x: x['relevance_score'], reverse=True)
+        
+        best_orcid = sorted_orcids[0]
+        
+        # Дополнительная логика: если разница в релевантности мала, предпочитаем прямые ORCID URL
+        if len(sorted_orcids) > 1:
+            best_score = best_orcid['relevance_score']
+            second_best = sorted_orcids[1]
+            
+            # Если разница меньше 0.1 и у второго ORCID лучший домен
+            if (best_score - second_best['relevance_score'] < 0.1 and 
+                second_best['is_direct_orcid_url'] and 
+                not best_orcid['is_direct_orcid_url']):
+                
+                logger.info(f"INFO: Переключаемся на ORCID {second_best['orcid']} из-за лучшего домена при малой разнице релевантности")
+                best_orcid = second_best
+        
+        logger.info(f"INFO: Выбран лучший ORCID: {best_orcid['orcid']} с релевантностью {best_orcid['relevance_score']:.2f}")
+        
+        return best_orcid
+    
+    def _calculate_name_proximity_score(self, orcid_info: Dict[str, Any], owner_name: str) -> float:
+        """Вычисляет близость ORCID к имени владельца email с улучшенным контекстным анализом"""
+        url = orcid_info['url']
+        score = 0.0
+        
+        if not owner_name or owner_name == 'Не определено':
+            return 0.0
+        
+        url_lower = url.lower()
+        owner_name_lower = owner_name.lower()
+        
+        logger.info(f"INFO: Анализируем близость имени '{owner_name}' к ORCID {orcid_info['orcid']} в URL: {url[:100]}...")
+        
+        # 1. ПРЯМАЯ ПРОВЕРКА в URL (для случаев когда имя есть в самом URL)
+        direct_url_score = self._check_direct_name_in_url(url_lower, owner_name, owner_name_lower)
+        score += direct_url_score
+        logger.info(f"INFO: Прямая проверка URL: +{direct_url_score:.3f}")
+        
+        # 2. КОНТЕКСТНЫЙ АНАЛИЗ - анализируем веб-страницу по URL
+        context_score = self._analyze_webpage_context_for_name(url, owner_name)
+        score += context_score * 0.6  # Контекстный анализ имеет высокий вес
+        logger.info(f"INFO: Контекстный анализ страницы: +{context_score * 0.6:.3f}")
+        
+        # 3. АНАЛИЗ ПАТТЕРНОВ ORCID
+        pattern_score = self._analyze_orcid_patterns(orcid_info['orcid'], owner_name)
+        score += pattern_score * 0.2
+        logger.info(f"INFO: Анализ паттернов ORCID: +{pattern_score * 0.2:.3f}")
+        
+        # 4. ДОПОЛНИТЕЛЬНЫЙ ПОИСК ПО ORCID
+        if orcid_info.get('is_direct_orcid_url', False):
+            orcid_api_score = self._check_orcid_api_for_name(orcid_info['orcid'], owner_name)
+            score += orcid_api_score * 0.8  # ORCID API имеет очень высокий вес
+            logger.info(f"INFO: Проверка ORCID API: +{orcid_api_score * 0.8:.3f}")
+        
+        # 5. АНАЛИЗ СЕМАНТИЧЕСКИХ ВАРИАЦИЙ ИМЕНИ
+        variation_score = self._analyze_name_variations(owner_name, url_lower)
+        score += variation_score * 0.3
+        logger.info(f"INFO: Анализ вариаций имени: +{variation_score * 0.3:.3f}")
+        
+        final_score = min(1.0, score)
+        logger.info(f"INFO: Итоговая близость имени для ORCID {orcid_info['orcid']}: {final_score:.3f}")
+        
+        return final_score
+    
+    def _calculate_domain_affinity_score(self, orcid_info: Dict[str, Any], email: str) -> float:
+        """Вычисляет аффинность домена ORCID с доменом email"""
+        score = 0.0
+        
+        if not email or '@' not in email:
+            return 0.0
+        
+        email_domain = email.split('@')[1].lower() if '@' in email else ''
+        orcid_domain = orcid_info.get('domain', '').lower()
+        
+        # Прямое совпадение доменов
+        if email_domain in orcid_domain or any(part in orcid_domain for part in email_domain.split('.')):
+            score += 0.5
+        
+        # Анализ типа домена email
+        email_is_academic = any(academic in email_domain for academic in ['edu', 'ac.', 'university', 'institute'])
+        email_is_commercial = any(comm in email_domain for comm in ['gmail', 'yahoo', 'outlook', 'mail', 'list'])
+        
+        # Соответствие типов доменов
+        if email_is_academic:
+            if any(academic in orcid_domain for academic in ['edu', 'ac.', 'university', 'institute']):
+                score += 0.3
+            elif 'orcid.org' in orcid_domain:
+                score += 0.2
+        
+        if email_is_commercial:
+            if any(scientific in orcid_domain for scientific in ['researchgate', 'scholar', 'pubmed', 'ncbi']):
+                score += 0.2
+            elif 'orcid.org' in orcid_domain:
+                score += 0.3
+        
+        # Географическая близость (по доменным зонам)
+        email_zone = email_domain.split('.')[-1] if '.' in email_domain else ''
+        orcid_zone = orcid_domain.split('.')[-1] if '.' in orcid_domain else ''
+        
+        if email_zone == orcid_zone and email_zone in ['ru', 'org', 'edu', 'com']:
+            score += 0.1
+        
+        return min(1.0, score)
+    
+    def _calculate_source_quality_score(self, orcid_info: Dict[str, Any]) -> float:
+        """Вычисляет качество источника где найден ORCID"""
+        url = orcid_info['url'].lower()
+        score = 0.0
+        
+        # Высококачественные научные источники
+        high_quality_sources = [
+            'pubmed.ncbi.nlm.nih.gov', 'scholar.google.com', 'researchgate.net',
+            'springer.com', 'elsevier.com', 'nature.com', 'science.org',
+            'orcid.org', 'ieee.org', 'acm.org'
+        ]
+        
+        # Институциональные источники
+        institutional_sources = [
+            'university', 'institute', '.edu', '.ac.', 'academy', 'college'
+        ]
+        
+        # Научные журналы и конференции
+        journal_sources = [
+            'journal', 'conference', 'proceedings', 'publication', 'article'
+        ]
+        
+        # Проверяем высококачественные источники
+        for source in high_quality_sources:
+            if source in url:
+                score += 0.4
+                break
+        
+        # Проверяем институциональные источники
+        for source in institutional_sources:
+            if source in url:
+                score += 0.3
+                break
+        
+        # Проверяем научные журналы
+        for source in journal_sources:
+            if source in url:
+                score += 0.2
+                break
+        
+        # Дополнительные бонусы
+        if 'doi.org' in url:
+            score += 0.2  # Официальные DOI ссылки
+        
+        if any(repo in url for repo in ['github', 'gitlab', 'repository']):
+            score += 0.1  # Научные репозитории кода
+        
+        return min(1.0, score)
+    
+    def _check_direct_name_in_url(self, url_lower: str, owner_name: str, owner_name_lower: str) -> float:
+        """Проверяет прямое наличие имени в URL"""
+        score = 0.0
+        
+        # Проверяем полное имя
+        if owner_name_lower in url_lower:
+            score += 0.4
+        
+        # Проверяем отдельные части имени
+        name_parts = owner_name.split()
+        found_parts = 0
+        for part in name_parts:
+            if len(part) > 2 and part.lower() in url_lower:
+                found_parts += 1
+        
+        if found_parts >= 2:
+            score += 0.3
+        elif found_parts == 1:
+            score += 0.1
+        
+        # Проверяем транслитерацию имени
+        transliterated_name = self._transliterate_name(owner_name).lower()
+        if transliterated_name != owner_name_lower and transliterated_name in url_lower:
+            score += 0.2
+        
+        # Проверяем инициалы
+        initials = ''.join([name[0].lower() for name in name_parts if len(name) > 0])
+        if len(initials) >= 2 and initials in url_lower:
+            score += 0.1
+        
+        return min(1.0, score)
+    
+    def _analyze_webpage_context_for_name(self, url: str, owner_name: str) -> float:
+        """Анализирует веб-страницу по URL для поиска имени владельца в контексте"""
+        score = 0.0
+        
+        try:
+            # Для прямых ORCID URL можем использовать ORCID API
+            if 'orcid.org' in url.lower():
+                return self._analyze_orcid_page_for_name(url, owner_name)
+            
+            # Для других URL пытаемся скрейпить страницу
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                content = response.text.lower()
+                
+                # Проверяем наличие имени в содержимом страницы
+                if owner_name.lower() in content:
+                    score += 0.6
+                
+                # Проверяем части имени
+                name_parts = owner_name.split()
+                found_parts = sum(1 for part in name_parts if len(part) > 2 and part.lower() in content)
+                
+                if found_parts >= 2:
+                    score += 0.4
+                elif found_parts == 1:
+                    score += 0.2
+                
+                # Проверяем транслитерацию
+                transliterated = self._transliterate_name(owner_name).lower()
+                if transliterated != owner_name.lower() and transliterated in content:
+                    score += 0.3
+                
+        except Exception as e:
+            logger.warning(f"Ошибка при анализе веб-страницы {url}: {e}")
+        
+        return min(1.0, score)
+    
+    def _analyze_orcid_page_for_name(self, url: str, owner_name: str) -> float:
+        """Специальный анализ ORCID страницы для поиска имени"""
+        score = 0.0
+        
+        try:
+            # Извлекаем ORCID из URL
+            orcid_match = re.search(r'orcid\.org/([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4})', url)
+            if orcid_match:
+                orcid_id = orcid_match.group(1)
+                
+                # Используем публичное ORCID API
+                api_url = f"https://pub.orcid.org/v3.0/{orcid_id}/person"
+                headers = {'Accept': 'application/json'}
+                
+                response = requests.get(api_url, headers=headers, timeout=5)
+                if response.status_code == 200:
+                    orcid_data = response.json()
+                    
+                    # Извлекаем имя из ORCID профиля
+                    name_data = orcid_data.get('name', {})
+                    if name_data:
+                        given_names = name_data.get('given-names', {}).get('value', '')
+                        family_name = name_data.get('family-name', {}).get('value', '')
+                        
+                        if given_names and family_name:
+                            orcid_full_name = f"{given_names} {family_name}".lower()
+                            owner_name_lower = owner_name.lower()
+                            
+                            # Точное совпадение
+                            if orcid_full_name == owner_name_lower:
+                                score += 1.0
+                            # Частичное совпадение
+                            elif any(part in orcid_full_name for part in owner_name.split() if len(part) > 2):
+                                score += 0.6
+                            
+                            logger.info(f"INFO: ORCID профиль содержит имя: '{orcid_full_name}', искомое: '{owner_name_lower}', совпадение: {score:.2f}")
+                
+        except Exception as e:
+            logger.warning(f"Ошибка при анализе ORCID страницы {url}: {e}")
+        
+        return min(1.0, score)
+    
+    def _analyze_orcid_patterns(self, orcid_id: str, owner_name: str) -> float:
+        """Анализирует паттерны ORCID для возможной связи с именем"""
+        score = 0.0
+        
+        # Простая эвристика: проверяем, есть ли совпадения между цифрами ORCID и инициалами
+        # Это слабая связь, поэтому низкий score
+        name_parts = owner_name.split()
+        if len(name_parts) >= 2:
+            # Проверяем, есть ли какие-то численные паттерны (очень слабая связь)
+            score += 0.1
+        
+        return min(1.0, score)
+    
+    def _check_orcid_api_for_name(self, orcid_id: str, owner_name: str) -> float:
+        """Проверяет ORCID через API для поиска имени владельца"""
+        score = 0.0
+        
+        try:
+            # Используем публичное ORCID API
+            api_url = f"https://pub.orcid.org/v3.0/{orcid_id}/person"
+            headers = {'Accept': 'application/json'}
+            
+            response = requests.get(api_url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                orcid_data = response.json()
+                
+                # Извлекаем имя
+                name_data = orcid_data.get('name', {})
+                if name_data:
+                    given_names = name_data.get('given-names', {}).get('value', '')
+                    family_name = name_data.get('family-name', {}).get('value', '')
+                    
+                    if given_names and family_name:
+                        orcid_full_name = f"{given_names} {family_name}".lower()
+                        owner_name_lower = owner_name.lower()
+                        
+                        logger.info(f"INFO: ORCID API вернул имя: '{orcid_full_name}', сравниваем с: '{owner_name_lower}'")
+                        
+                        # Точное совпадение
+                        if orcid_full_name == owner_name_lower:
+                            score = 1.0
+                        # Проверяем совпадение частей имени
+                        else:
+                            owner_parts = set(owner_name_lower.split())
+                            orcid_parts = set(orcid_full_name.split())
+                            
+                            # Считаем пересечение
+                            intersection = owner_parts.intersection(orcid_parts)
+                            if intersection:
+                                score = len(intersection) / max(len(owner_parts), len(orcid_parts))
+                                logger.info(f"INFO: Найдено пересечение имен: {intersection}, score: {score:.2f}")
+                        
+                        # Проверяем транслитерацию
+                        transliterated_owner = self._transliterate_name(owner_name).lower()
+                        if score < 0.5 and transliterated_owner != owner_name_lower:
+                            if transliterated_owner == orcid_full_name:
+                                score = max(score, 0.8)
+                            elif any(part in orcid_full_name for part in transliterated_owner.split() if len(part) > 2):
+                                score = max(score, 0.5)
+                
+                # Также проверяем биографию и другие имена
+                biography = orcid_data.get('biography', {}).get('content', {}).get('value', '')
+                if biography and owner_name.lower() in biography.lower():
+                    score = max(score, 0.3)
+                
+                # Проверяем другие имена (псевдонимы)
+                other_names = orcid_data.get('other-names', {}).get('other-name', [])
+                for other_name in other_names:
+                    if isinstance(other_name, dict):
+                        other_name_value = other_name.get('content', {}).get('value', '').lower()
+                        if other_name_value and owner_name.lower() in other_name_value:
+                            score = max(score, 0.6)
+                
+        except Exception as e:
+            logger.warning(f"Ошибка при проверке ORCID API для {orcid_id}: {e}")
+        
+        return min(1.0, score)
+    
+    def _analyze_name_variations(self, owner_name: str, url_lower: str) -> float:
+        """Анализирует различные вариации имени для поиска в URL"""
+        score = 0.0
+        
+        # Создаем различные вариации имени
+        variations = set()
+        name_parts = owner_name.split()
+        
+        if len(name_parts) >= 2:
+            # Обратный порядок (Фамилия Имя)
+            variations.add(' '.join(reversed(name_parts)).lower())
+            
+            # Только имя и фамилия (без отчества)
+            if len(name_parts) >= 3:
+                variations.add(f"{name_parts[0]} {name_parts[-1]}".lower())
+                variations.add(f"{name_parts[-1]} {name_parts[0]}".lower())
+            
+            # Инициалы + фамилия
+            initials = ''.join([part[0] for part in name_parts[:-1]])
+            variations.add(f"{initials} {name_parts[-1]}".lower())
+            variations.add(f"{name_parts[-1]} {initials}".lower())
+            
+            # Фамилия + инициалы с точками
+            initials_with_dots = '.'.join([part[0] for part in name_parts[:-1]]) + '.'
+            variations.add(f"{name_parts[-1]} {initials_with_dots}".lower())
+            
+            # Сокращенные формы имени
+            for i, part in enumerate(name_parts):
+                if len(part) > 3:
+                    # Сокращение до первых букв
+                    short_part = part[:3]
+                    variation_parts = name_parts.copy()
+                    variation_parts[i] = short_part
+                    variations.add(' '.join(variation_parts).lower())
+        
+        # Проверяем каждую вариацию
+        for variation in variations:
+            if variation in url_lower:
+                score += 0.3
+                logger.info(f"INFO: Найдена вариация имени '{variation}' в URL")
+                break  # Достаточно одного совпадения
+        
+        # Транслитерация всех вариаций
+        for variation in list(variations):
+            transliterated = self._transliterate_name(variation)
+            if transliterated.lower() != variation and transliterated.lower() in url_lower:
+                score += 0.2
+                logger.info(f"INFO: Найдена транслитерированная вариация '{transliterated}' в URL")
+                break
+        
+        return min(1.0, score)
 

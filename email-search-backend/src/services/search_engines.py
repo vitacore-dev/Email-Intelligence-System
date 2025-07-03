@@ -879,29 +879,42 @@ class SearchEngineService:
             # Добавляем найденные email адреса как альтернативные контакты
             processed['scientific_identifiers']['alternative_emails'] = webpage_contacts['emails'][:3]
         
-        # Извлекаем ORCID из найденных websites
+        # Извлекаем ORCID из найденных websites с улучшенным алгоритмом выбора
         logger.info(f"INFO: Проверяем наличие websites в contact_information: {bool(webpage_contacts.get('websites'))}")
         if webpage_contacts.get('websites'):
-            logger.info(f"INFO: Проверяем websites в webpage_contacts: {len(webpage_contacts['websites'])} ссылок найдено")
+            websites_list = webpage_contacts['websites']
+            logger.info(f"INFO: Проверяем websites в webpage_contacts: {len(websites_list)} ссылок найдено")
             
-            orcid_pattern = re.compile(r'https?://orcid\.org/(?:0000-)?([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9X]{4})', re.IGNORECASE)
+            # Логируем первые 10 сайтов для анализа
+            logger.info(f"INFO: Первые 10 websites для анализа:")
+            for i, site in enumerate(websites_list[:10]):
+                logger.info(f"INFO:   {i+1}. {site}")
             
-            for website in webpage_contacts['websites']:
-                if isinstance(website, str):
-                    # Убираем возможные запятые в конце URL
-                    clean_url = website.rstrip(',')
-                    logger.info(f"INFO: Проверяем website: {clean_url}")
+            # Проверяем, есть ли ORCID в принципе в данных
+            orcid_count = sum(1 for site in websites_list if 'orcid' in str(site).lower())
+            logger.info(f"INFO: Количество ссылок содержащих 'orcid': {orcid_count}")
+            
+            try:
+                # Собираем все валидные ORCID с дополнительной информацией
+                logger.info(f"INFO: Вызываем _extract_all_orcids_from_websites...")
+                found_orcids = self._extract_all_orcids_from_websites(webpage_contacts['websites'])
+                logger.info(f"INFO: _extract_all_orcids_from_websites вернула: {len(found_orcids) if found_orcids else 0} ORCID")
+                
+                if found_orcids:
+                    # Выбираем наиболее релевантный ORCID
+                    logger.info(f"INFO: Вызываем _select_best_orcid...")
+                    best_orcid = self._select_best_orcid(found_orcids)
+                    logger.info(f"INFO: Выбран лучший ORCID из {len(found_orcids)} найденных: {best_orcid['orcid']} (рейтинг: {best_orcid['relevance_score']:.2f})")
+                    processed['scientific_identifiers']['orcid_id'] = best_orcid['orcid']
                     
-                    match = orcid_pattern.search(clean_url)
-                    if match:
-                        orcid_id = f"0000-{match.group(1)}" if not match.group(1).startswith('0000-') else match.group(1)
-                        # Проверяем корректность формата ORCID
-                        if re.match(r'^0000-[0-9]{4}-[0-9]{4}-[0-9X]{4}$', orcid_id):
-                            logger.info(f"INFO: Найден валидный ORCID в веб-анализе: {orcid_id}")
-                            processed['scientific_identifiers']['orcid_id'] = orcid_id
-                            break  # Берем первый найденный валидный ORCID
-                    else:
-                        logger.info(f"INFO: ORCID не найден в URL: {clean_url}")
+                    # Добавляем дополнительную информацию для отладки
+                    logger.info(f"INFO: Все найденные ORCID: {[o['orcid'] for o in found_orcids]}")
+                else:
+                    logger.info(f"INFO: Валидные ORCID не найдены в веб-анализе")
+            except Exception as e:
+                logger.error(f"ERROR: Ошибка при обработке ORCID из веб-анализа: {str(e)}")
+                import traceback
+                logger.error(f"ERROR: Traceback: {traceback.format_exc()}")
         
         # Обновляем академическую информацию
         webpage_academic = webpage_analysis.get('academic_info', {})
@@ -1446,4 +1459,134 @@ class SearchEngineService:
                         interests.append(context)
         
         return interests[:10]  # Ограничиваем количество
+    
+    def _extract_all_orcids_from_websites(self, websites: List[str]) -> List[Dict[str, Any]]:
+        """Извлекает все валидные ORCID из списка websites с дополнительной информацией для ранжирования"""
+        import re
+        
+        orcid_pattern = re.compile(r'https?://orcid\.org/(?:0000-)?([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9X]{4})', re.IGNORECASE)
+        found_orcids = []
+        
+        for index, website in enumerate(websites):
+            if isinstance(website, str):
+                # Убираем возможные запятые в конце URL
+                clean_url = website.rstrip(',')
+                logger.info(f"INFO: Проверяем website #{index+1}: {clean_url}")
+                
+                match = orcid_pattern.search(clean_url)
+                if match:
+                    orcid_id = f"0000-{match.group(1)}" if not match.group(1).startswith('0000-') else match.group(1)
+                    
+                    # Проверяем корректность формата ORCID
+                    if re.match(r'^0000-[0-9]{4}-[0-9]{4}-[0-9X]{4}$', orcid_id):
+                        logger.info(f"INFO: Найден валидный ORCID: {orcid_id} на позиции {index+1}")
+                        
+                        orcid_info = {
+                            'orcid': orcid_id,
+                            'url': clean_url,
+                            'position_in_list': index,  # Позиция в исходном списке
+                            'relevance_score': 0.0,     # Будет рассчитан в _calculate_orcid_relevance
+                            'is_complete_url': clean_url.startswith('http'),
+                            'domain_context': self._extract_domain_context(clean_url)
+                        }
+                        
+                        # Рассчитываем релевантность
+                        orcid_info['relevance_score'] = self._calculate_orcid_relevance(orcid_info, index, websites)
+                        
+                        found_orcids.append(orcid_info)
+                    else:
+                        logger.info(f"INFO: Найден ORCID с некорректным форматом: {orcid_id}")
+                else:
+                    logger.info(f"INFO: ORCID не найден в URL: {clean_url}")
+        
+        logger.info(f"INFO: Всего найдено {len(found_orcids)} валидных ORCID")
+        return found_orcids
+    
+    def _calculate_orcid_relevance(self, orcid_info: Dict[str, Any], position: int, all_websites: List[str]) -> float:
+        """Рассчитывает релевантность ORCID на основе различных факторов"""
+        
+        relevance_score = 0.0
+        
+        # 1. Бонус за позицию в списке (чем раньше, тем лучше)
+        position_bonus = max(0, (len(all_websites) - position) / len(all_websites)) * 0.3
+        relevance_score += position_bonus
+        
+        # 2. Бонус за полный URL (vs неполный)
+        if orcid_info['is_complete_url']:
+            relevance_score += 0.2
+        
+        # 3. Бонус за контекст домена
+        domain_context = orcid_info['domain_context']
+        if domain_context:
+            # Приоритет академическим и исследовательским доменам
+            academic_domains = ['edu', 'ac.', 'university', 'institute', 'research', 'ncbi', 'pubmed', 'scholar']
+            if any(domain in domain_context.lower() for domain in academic_domains):
+                relevance_score += 0.3
+            
+            # Бонус за известные научные платформы
+            scientific_platforms = ['orcid.org', 'researchgate', 'academia.edu', 'ieee', 'springer', 'elsevier']
+            if any(platform in domain_context.lower() for platform in scientific_platforms):
+                relevance_score += 0.2
+        
+        # 4. Проверка на специальные паттерны в URL
+        url = orcid_info['url'].lower()
+        
+        # Бонус за прямые ссылки на ORCID профиль
+        if 'orcid.org' in url and 'record' not in url:
+            relevance_score += 0.1
+        
+        # Штраф за подозрительные URL (например, с множественными параметрами)
+        if url.count('?') > 1 or url.count('&') > 3:
+            relevance_score -= 0.1
+        
+        # 5. Проверка на дубликаты и вариации
+        # (Это можно расширить для детекции дубликатов ORCID)
+        
+        logger.info(f"INFO: ORCID {orcid_info['orcid']} - релевантность: {relevance_score:.3f} (позиция: {position_bonus:.3f}, URL: {0.2 if orcid_info['is_complete_url'] else 0:.3f}, домен: {domain_context})")
+        
+        return max(0.0, min(1.0, relevance_score))  # Ограничиваем диапазон [0, 1]
+    
+    def _extract_domain_context(self, url: str) -> str:
+        """Извлекает контекст домена из URL для анализа релевантности"""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            return parsed.netloc
+        except:
+            # Fallback для простого извлечения домена
+            if '://' in url:
+                domain_part = url.split('://')[1]
+                return domain_part.split('/')[0]
+            return url
+    
+    def _select_best_orcid(self, found_orcids: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Выбирает наиболее релевантный ORCID из найденных"""
+        
+        if not found_orcids:
+            return None
+        
+        # Сортируем по релевантности (убывание)
+        sorted_orcids = sorted(found_orcids, key=lambda x: x['relevance_score'], reverse=True)
+        
+        best_orcid = sorted_orcids[0]
+        
+        logger.info(f"INFO: Анализ всех найденных ORCID:")
+        for i, orcid in enumerate(sorted_orcids):
+            logger.info(f"INFO:   {i+1}. {orcid['orcid']} - релевантность: {orcid['relevance_score']:.3f} (позиция в списке: {orcid['position_in_list']+1})")
+        
+        # Дополнительные проверки для финального выбора
+        if len(sorted_orcids) > 1:
+            # Если разница в релевантности минимальна, выбираем по дополнительным критериям
+            score_diff = sorted_orcids[0]['relevance_score'] - sorted_orcids[1]['relevance_score']
+            
+            if score_diff < 0.1:  # Если разница меньше 10%
+                logger.info(f"INFO: Минимальная разница в релевантности ({score_diff:.3f}), применяем дополнительные критерии")
+                
+                # Приоритет URL с 'orcid.org' в домене
+                orcid_domain_candidates = [o for o in sorted_orcids[:3] if 'orcid.org' in o['url'].lower()]
+                if orcid_domain_candidates:
+                    best_orcid = orcid_domain_candidates[0]
+                    logger.info(f"INFO: Выбран ORCID с официального домена: {best_orcid['orcid']}")
+        
+        return best_orcid
 
