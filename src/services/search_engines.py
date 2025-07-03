@@ -448,10 +448,13 @@ class SearchEngineService:
             search_results: Результаты поиска
         """
         
+        # Сначала извлекаем базовую информацию
+        basic_info = self._extract_basic_info(email, search_results)
+        
         processed = {
-            'basic_info': self._extract_basic_info(email, search_results),
+            'basic_info': basic_info,
             'professional_info': self._extract_professional_info(search_results),
-            'scientific_identifiers': self._extract_scientific_identifiers(search_results),
+            'scientific_identifiers': self._extract_scientific_identifiers(search_results, email=email, found_names=basic_info.get('names_found', [])),
             'publications': self._extract_publications(search_results),
             'research_interests': self._extract_research_interests(search_results),
             'conclusions': self._generate_conclusions(email, search_results),
@@ -637,14 +640,15 @@ class SearchEngineService:
             'specialization': specializations[0] if specializations else "Не определено"
         }
     
-    def _extract_scientific_identifiers(self, results: List[Dict]) -> Dict[str, Any]:
-        """Извлечение научных идентификаторов"""
+    def _extract_scientific_identifiers(self, results: List[Dict], email: str = None, found_names: List[str] = None) -> Dict[str, Any]:
+        """Улучшенное извлечение научных идентификаторов с дополнительным поиском по имени"""
         
         orcid_pattern = r'(\d{4}-\d{4}-\d{4}-\d{4})'
         spin_pattern = r'(\d{4}-\d{4})'
         
         orcid_ids = []
         spin_codes = []
+        alternative_emails = []
         
         for result in results:
             text = f"{result.get('title', '')} {result.get('snippet', '')}"
@@ -656,11 +660,31 @@ class SearchEngineService:
             # Поиск SPIN-кода
             spin_matches = re.findall(spin_pattern, text)
             spin_codes.extend(spin_matches)
+            
+            # Поиск альтернативных email адресов
+            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            found_emails = re.findall(email_pattern, text)
+            for found_email in found_emails:
+                if email and found_email.lower() != email.lower():
+                    alternative_emails.append(found_email)
+        
+        # Дополнительный поиск ORCID по имени владельца
+        if not orcid_ids and found_names:
+            logger.info(f"Основной поиск ORCID не дал результатов. Выполняем дополнительный поиск по именам: {found_names[:3]}")
+            additional_orcids = self._search_orcid_by_names(found_names)
+            orcid_ids.extend(additional_orcids)
+        
+        # Удаляем дубликаты
+        orcid_ids = list(set(orcid_ids))
+        spin_codes = list(set(spin_codes))
+        alternative_emails = list(set(alternative_emails))
         
         return {
             'orcid_id': orcid_ids[0] if orcid_ids else "Не найден",
-            'spin_code': spin_codes[0] if spin_codes else "Не найден",
-            'email_for_correspondence': "Не определен"
+            'spin_code': spin_codes[0] if spin_codes else "Не найден", 
+            'email_for_correspondence': email if email else "Не определен",
+            'alternative_emails': alternative_emails[:5],  # Ограничиваем количество
+            'all_orcid_found': orcid_ids[:3] if len(orcid_ids) > 1 else []  # Все найденные ORCID
         }
     
     def _extract_publications(self, results: List[Dict]) -> List[Dict]:
@@ -814,6 +838,40 @@ class SearchEngineService:
         if webpage_contacts.get('emails'):
             # Добавляем найденные email адреса как альтернативные контакты
             processed['scientific_identifiers']['alternative_emails'] = webpage_contacts['emails'][:3]
+        
+        # Извлекаем ORCID из найденных веб-сайтов
+        logger.info(f"DEBUG: Проверяем websites в webpage_contacts: {webpage_contacts.get('websites') is not None}")
+        if webpage_contacts.get('websites'):
+            websites = webpage_contacts['websites']
+            logger.info(f"DEBUG: Найдено {len(websites)} веб-сайтов для анализа ORCID")
+            
+            orcid_pattern = r'orcid\.org/([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4})'
+            found_orcids = []
+            
+            for i, website in enumerate(websites[:10]):  # Проверяем только первые 10
+                if isinstance(website, str):
+                    logger.info(f"DEBUG: Анализируем website {i+1}: {website[:100]}...")  # Ограничиваем длину для логов
+                    orcid_match = re.search(orcid_pattern, website)
+                    if orcid_match:
+                        found_orcid = orcid_match.group(1)
+                        found_orcids.append(found_orcid)
+                        logger.info(f"DEBUG: Найден ORCID: {found_orcid}")
+            
+            # Удаляем дубликаты и обновляем ORCID, если он не был найден ранее
+            found_orcids = list(set(found_orcids))
+            logger.info(f"DEBUG: Всего уникальных ORCID найдено: {len(found_orcids)}, текущий ORCID в processed: {processed['scientific_identifiers']['orcid_id']}")
+            
+            if found_orcids and (processed['scientific_identifiers']['orcid_id'] == 'Не найден' or not processed['scientific_identifiers']['orcid_id'] or processed['scientific_identifiers']['orcid_id'] == ''):
+                processed['scientific_identifiers']['orcid_id'] = found_orcids[0]
+                logger.info(f"ORCID извлечен из веб-анализа: {found_orcids[0]}")
+                
+                # Добавляем все найденные ORCID если их несколько
+                if len(found_orcids) > 1:
+                    processed['scientific_identifiers']['all_orcid_found'] = found_orcids
+            else:
+                logger.info(f"DEBUG: ORCID не обновлен. found_orcids: {found_orcids}, current_orcid_id: {processed['scientific_identifiers']['orcid_id']}")
+        else:
+            logger.info(f"DEBUG: Нет веб-сайтов в webpage_contacts для анализа ORCID")
         
         # Обновляем академическую информацию
         webpage_academic = webpage_analysis.get('academic_info', {})
@@ -1246,89 +1304,6 @@ class SearchEngineService:
         
         return list(set(positions))
     
-    def _enhance_with_webpage_data(self, processed: Dict[str, Any], webpage_analysis: Dict[str, Any]):
-        """Обогащение основной информации данными из анализа веб-страниц"""
-        
-        # Обновляем основную информацию о владельце
-        if webpage_analysis.get('owner_identification', {}).get('most_likely_name'):
-            most_likely_name = webpage_analysis['owner_identification']['most_likely_name']
-            confidence = webpage_analysis['owner_identification'].get('confidence_score', 0)
-            
-            # Если найденное имя имеет высокую уверенность, обновляем основную информацию
-            if confidence > 0.3 and most_likely_name:
-                processed['basic_info']['owner_name'] = most_likely_name
-                processed['basic_info']['owner_name_en'] = self._transliterate_name(most_likely_name)
-                processed['basic_info']['confidence_score'] = confidence
-        
-        # Обновляем профессиональную информацию
-        webpage_professional = webpage_analysis.get('professional_details', {})
-        
-        if webpage_professional.get('positions'):
-            # Берем наиболее релевантную позицию
-            best_position = self._select_best_position(webpage_professional['positions'])
-            if best_position:
-                processed['professional_info']['position'] = best_position
-        
-        if webpage_professional.get('organizations'):
-            # Берем наиболее релевантную организацию
-            best_org = self._select_best_organization(webpage_professional['organizations'])
-            if best_org:
-                processed['professional_info']['workplace'] = best_org
-        
-        if webpage_professional.get('locations'):
-            # Берем наиболее релевантную локацию
-            best_location = webpage_professional['locations'][0]
-            processed['professional_info']['address'] = best_location
-        
-        # Обновляем контактную информацию
-        webpage_contacts = webpage_analysis.get('contact_information', {})
-        
-        if webpage_contacts.get('emails'):
-            # Добавляем найденные email адреса как альтернативные контакты
-            processed['scientific_identifiers']['alternative_emails'] = webpage_contacts['emails'][:3]
-        
-        # Обновляем академическую информацию
-        webpage_academic = webpage_analysis.get('academic_info', {})
-        
-        if webpage_academic.get('degrees'):
-            processed['professional_info']['degrees'] = webpage_academic['degrees'][:3]
-        
-        if webpage_academic.get('research_areas'):
-            # Объединяем с существующими исследовательскими интересами
-            existing_interests = processed.get('research_interests', [])
-            new_interests = webpage_academic['research_areas'][:5]
-            
-            # Безопасное удаление дубликатов для любых типов данных
-            combined_interests = []
-            seen_items = []
-            
-            for item in existing_interests + new_interests:
-                # Для простых типов используем прямое сравнение
-                if isinstance(item, (str, int, float, bool)):
-                    if item not in seen_items:
-                        seen_items.append(item)
-                        combined_interests.append(item)
-                else:
-                    # Для сложных типов сравниваем строковое представление
-                    item_str = str(item)
-                    if item_str not in [str(x) for x in combined_interests]:
-                        combined_interests.append(item)
-            
-            processed['research_interests'] = combined_interests[:10]
-        
-        # Добавляем выводы на основе анализа веб-страниц
-        analysis_meta = webpage_analysis.get('analysis_metadata', {})
-        successful_extractions = analysis_meta.get('successful_extractions', 0)
-        
-        if successful_extractions > 0:
-            processed['conclusions'].append(
-                f"Проанализировано {successful_extractions} веб-страниц с дополнительной информацией"
-            )
-            
-            if webpage_analysis.get('owner_identification', {}).get('confidence_score', 0) > 0.5:
-                processed['conclusions'].append(
-                    "Высокая вероятность корректной идентификации владельца email"
-                )
     
     def _enhance_with_nlp_data(self, processed: Dict[str, Any], nlp_data: Dict[str, Any]):
         """Обогащение основной информации данными из NLP анализа"""
@@ -1441,4 +1416,125 @@ class SearchEngineService:
                         interests.append(context)
         
         return interests[:10]  # Ограничиваем количество
+    
+    def _search_orcid_by_names(self, names: List[str]) -> List[str]:
+        """Поиск ORCID по списку имен через веб-скрапинг"""
+        
+        found_orcids = []
+        
+        for name in names[:3]:  # Ограничиваем количество имен для поиска
+            if not name or len(name.strip()) < 5:
+                continue
+                
+            logger.info(f"Ищем ORCID для имени: {name}")
+            
+            # Формируем поисковые запросы для ORCID
+            search_queries = self._generate_orcid_search_queries(name)
+            
+            for query in search_queries:
+                try:
+                    # Используем Google API для поиска ORCID
+                    if self.google_api_key:
+                        orcid_results = self._search_google(query, max_results=10)
+                        
+                        # Извлекаем ORCID из результатов
+                        orcids_from_results = self._extract_orcid_from_search_results(orcid_results, name)
+                        found_orcids.extend(orcids_from_results)
+                        
+                        if orcids_from_results:
+                            logger.info(f"Найдено ORCID для '{name}': {orcids_from_results}")
+                            break  # Прекращаем поиск по другим запросам для этого имени
+                        
+                        time.sleep(0.2)  # Пауза между запросами
+                        
+                except Exception as e:
+                    logger.error(f"Ошибка поиска ORCID для '{name}' с запросом '{query}': {e}")
+                    continue
+        
+        # Удаляем дубликаты и возвращаем уникальные ORCID
+        unique_orcids = list(set(found_orcids))
+        logger.info(f"Общий результат поиска ORCID по именам: {unique_orcids}")
+        
+        return unique_orcids
+    
+    def _generate_orcid_search_queries(self, name: str) -> List[str]:
+        """Генерация поисковых запросов для ORCID по имени"""
+        
+        queries = []
+        
+        # Основные запросы для ORCID
+        queries.append(f'"{name}" site:orcid.org')
+        queries.append(f'"{name}" ORCID')
+        queries.append(f'"{name}" "0000-"')  # Поиск по паттерну ORCID
+        
+        # Дополнительные запросы для научных платформ
+        queries.append(f'"{name}" site:researchgate.net ORCID')
+        queries.append(f'"{name}" site:scholar.google.com ORCID')
+        queries.append(f'"{name}" site:pubmed.ncbi.nlm.nih.gov ORCID')
+        
+        return queries[:4]  # Ограничиваем количество запросов
+    
+    def _extract_orcid_from_search_results(self, search_results: List[Dict], name: str) -> List[str]:
+        """Извлечение ORCID из результатов поиска с проверкой соответствия имени"""
+        
+        found_orcids = []
+        orcid_pattern = r'(\d{4}-\d{4}-\d{4}-\d{4})'
+        
+        for result in search_results:
+            title = result.get('title', '')
+            snippet = result.get('snippet', '')
+            link = result.get('link', '')
+            
+            # Объединяем всю информацию для анализа
+            full_text = f"{title} {snippet} {link}"
+            
+            # Поиск ORCID в тексте
+            orcid_matches = re.findall(orcid_pattern, full_text)
+            
+            for orcid in orcid_matches:
+                # Проверяем, что имя упоминается в том же контексте
+                if self._is_name_associated_with_orcid(name, full_text):
+                    found_orcids.append(orcid)
+                    logger.info(f"Найден ORCID {orcid} для имени '{name}' в результате: {title[:100]}")
+            
+            # Дополнительно проверяем URL на прямые ссылки на ORCID
+            if 'orcid.org' in link.lower():
+                # Извлекаем ORCID из URL
+                url_orcid_match = re.search(r'orcid\.org/(\d{4}-\d{4}-\d{4}-\d{4})', link)
+                if url_orcid_match:
+                    url_orcid = url_orcid_match.group(1)
+                    if self._is_name_associated_with_orcid(name, full_text):
+                        found_orcids.append(url_orcid)
+                        logger.info(f"Найден ORCID {url_orcid} из URL для имени '{name}'")
+        
+        return found_orcids
+    
+    def _is_name_associated_with_orcid(self, name: str, text: str) -> bool:
+        """Проверяет, связано ли имя с ORCID в данном контексте"""
+        
+        text_lower = text.lower()
+        name_lower = name.lower()
+        
+        # Простая проверка на наличие имени в тексте
+        if name_lower in text_lower:
+            return True
+        
+        # Проверяем отдельные части имени (имя и фамилия)
+        name_parts = name_lower.split()
+        if len(name_parts) >= 2:
+            # Проверяем, что хотя бы 2 части имени присутствуют
+            found_parts = 0
+            for part in name_parts:
+                if len(part) > 2 and part in text_lower:
+                    found_parts += 1
+            
+            if found_parts >= 2:
+                return True
+        
+        # Проверяем транслитерацию (для русских имен)
+        transliterated_name = self._transliterate_name(name).lower()
+        if transliterated_name != name_lower and transliterated_name in text_lower:
+            return True
+        
+        return False
 

@@ -163,10 +163,11 @@ def orcid_search_by_email():
         email = data['email']
         logger.info(f"Поиск в ORCID по email: {email}")
         
+        # Поиск теперь включает автоматический дополнительный поиск по именам
         researchers = orcid_service.search_by_email(email)
         
         return jsonify({
-            'message': 'Поиск выполнен успешно',
+            'message': 'Поиск выполнен успешно (включая поиск по именам)',
             'researchers': researchers,
             'total_results': len(researchers),
             'email': email,

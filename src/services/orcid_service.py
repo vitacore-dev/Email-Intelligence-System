@@ -22,17 +22,43 @@ class ORCIDService:
             logger.warning("ORCID_CLIENT_ID не найден в переменных окружения")
     
     def search_by_email(self, email: str) -> List[Dict[str, Any]]:
-        """Поиск исследователей по email адресу"""
+        """Поиск исследователей по email адресу и их именам"""
         try:
             # Поиск ORCID ID по email
             orcid_ids = self.search_orcid_by_email(email)
+            if not orcid_ids:
+                orcid_ids = []
             
             researchers = []
+            additional_orcid_ids = set()
+            
+            # Получаем профили для найденных по email ORCID ID
             for orcid_id in orcid_ids[:5]:  # Ограничиваем количество результатов
                 researcher_info = self.get_researcher_profile(orcid_id)
                 if researcher_info:
                     researchers.append(researcher_info)
+                    
+                    # Извлекаем ФИО владельца для дополнительного поиска
+                    given_names = researcher_info.get('personal_info', {}).get('given_names', '')
+                    family_name = researcher_info.get('personal_info', {}).get('family_name', '')
+                    
+                    if given_names and family_name:
+                        logger.info(f"Дополнительный поиск ORCID по имени: {given_names} {family_name}")
+                        additional_ids = self.search_by_name(given_names, family_name)
+                        
+                        # Добавляем новые ORCID ID, которых еще нет
+                        for additional_id in additional_ids:
+                            if additional_id not in orcid_ids and additional_id not in additional_orcid_ids:
+                                additional_orcid_ids.add(additional_id)
             
+            # Получаем профили для дополнительно найденных ORCID ID
+            for additional_id in list(additional_orcid_ids)[:3]:  # Ограничиваем дополнительные результаты
+                additional_info = self.get_researcher_profile(additional_id)
+                if additional_info:
+                    additional_info['found_by'] = 'name_search'  # Отмечаем способ обнаружения
+                    researchers.append(additional_info)
+            
+            logger.info(f"Найдено исследователей: {len(researchers)} (по email: {len(orcid_ids)}, по имени: {len(additional_orcid_ids)})")
             return researchers
             
         except Exception as e:

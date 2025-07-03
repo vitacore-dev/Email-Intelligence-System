@@ -450,6 +450,58 @@
             transform: translateY(-1px);
         }
 
+        /* ORCID стили */
+        .orcid-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #a6ce39 !important;
+            text-decoration: none;
+            font-weight: 600;
+            padding: 6px 12px;
+            background: #f8fdf3;
+            border: 2px solid #a6ce39;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+        
+        .orcid-link:hover {
+            background: #a6ce39;
+            color: white !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(166, 206, 57, 0.3);
+        }
+        
+        .orcid-icon {
+            width: 16px;
+            height: 16px;
+            background: #a6ce39;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 10px;
+        }
+        
+        .orcid-link:hover .orcid-icon {
+            background: white;
+            color: #a6ce39;
+        }
+        
+        .scientific-identifier {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        
+        .scientific-identifier strong {
+            min-width: 120px;
+        }
+
         /* Адаптивность */
         @media (max-width: 768px) {
             .container {
@@ -782,7 +834,15 @@
                 
                 <div class="info-card">
                     <h3>🔬 Научные идентификаторы</h3>
-                    <p><strong>ORCID ID:</strong> ${scientificIds.orcid_id || 'Не найден'}</p>
+                    <div class="scientific-identifier">
+                        <strong>ORCID ID:</strong>
+                        ${scientificIds.orcid_id ? `
+                            <a href="https://orcid.org/${scientificIds.orcid_id}" target="_blank" rel="noopener noreferrer" class="orcid-link">
+                                <span class="orcid-icon">ID</span>
+                                ${scientificIds.orcid_id}
+                            </a>
+                        ` : '<span style="color: #999;">Не найден</span>'}
+                    </div>
                     <p><strong>SPIN код:</strong> ${scientificIds.spin_code || 'Не найден'}</p>
                     <p><strong>Email для корреспонденции:</strong> ${scientificIds.email_for_correspondence || 'Не определен'}</p>
                     ${scientificIds.alternative_emails ? `<p><strong>Альтернативные email:</strong> ${scientificIds.alternative_emails.join(', ')}</p>` : ''}

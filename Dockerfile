@@ -19,8 +19,9 @@ COPY src/ ./src/
 COPY data/ ./data/
 
 # Создание директорий для логов и данных
-RUN mkdir -p data/logs && \
-    chmod 755 data/
+RUN mkdir -p data/logs src/database && \
+    chmod 755 data/ && \
+    chmod 755 src/database/
 
 # Открытие порта
 EXPOSE 5001
