@@ -1,0 +1,1444 @@
+import React, { useState, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
+
+// Компонент для отображения вкладок
+const TabNavigator = ({ activeTab, setActiveTab, tabs }) => {
+  return (
+    <div className="tabs-container">
+      <div className="tabs-header">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.icon} {tab.title}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Компонент для основной информации
+const BasicInfo = ({ data }) => {
+  const basicInfo = data?.basic_info || {};
+  const professionalInfo = data?.professional_info || {};
+  const scientificIds = data?.scientific_identifiers || {};
+  const searchMetadata = data?.search_metadata || {};
+  const informationSources = data?.information_sources || [];
+
+  const getStatusText = (status) => {
+    const statusMap = {
+      'identified': '✅ Идентифицирован',
+      'partial_info': '⚠️ Частичная информация',
+      'not_found': '❌ Не найден',
+      'limited_search': '🔍 Ограниченный поиск',
+      'educational_domain': '🎓 Образовательный домен',
+      'government_domain': '🏛️ Государственный домен'
+    };
+    return statusMap[status] || status || 'Неизвестно';
+  };
+
+  const getSearchMethodText = (method) => {
+    const methodMap = {
+      'real_api': '🔗 API поисковых систем',
+      'alternative': '🔄 Альтернативный поиск',
+      'fallback': '⚡ Резервный режим',
+      'cache': '💾 Кэш',
+      'demo': '🎭 Демо режим'
+    };
+    return methodMap[method] || method || 'Неизвестно';
+  };
+
+  return (
+    <div className="basic-info-grid">
+      <div className="info-card">
+        <h3>👤 Владелец Email</h3>
+        <div className="info-content">
+          <div className="info-item">
+            <strong>Имя:</strong> {basicInfo.owner_name || 'Не определено'}
+          </div>
+          <div className="info-item">
+            <strong>Английское имя:</strong> {basicInfo.owner_name_en || 'Not determined'}
+          </div>
+          <div className="info-item">
+            <strong>Статус:</strong> {getStatusText(basicInfo.status)}
+          </div>
+          {basicInfo.confidence_score && (
+            <div className="info-item">
+              <strong>Уверенность:</strong> {Math.round(basicInfo.confidence_score * 100)}%
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="info-card">
+        <h3>💼 Профессиональная информация</h3>
+        <div className="info-content">
+          <div className="info-item">
+            <strong>Должность:</strong> {professionalInfo.position || 'Не определено'}
+          </div>
+          <div className="info-item">
+            <strong>Место работы:</strong> {professionalInfo.workplace || 'Не определено'}
+          </div>
+          <div className="info-item">
+            <strong>Адрес:</strong> {professionalInfo.address || 'Не определено'}
+          </div>
+          <div className="info-item">
+            <strong>Специализация:</strong> {professionalInfo.specialization || 'Не определено'}
+          </div>
+          {professionalInfo.degrees && (
+            <div className="info-item">
+              <strong>Степени:</strong> {professionalInfo.degrees.join(', ')}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="info-card">
+        <h3>🔬 Научные идентификаторы</h3>
+        <div className="info-content">
+          <div className="info-item">
+            <strong>ORCID ID:</strong> {scientificIds.orcid_id || 'Не найден'}
+          </div>
+          <div className="info-item">
+            <strong>SPIN код:</strong> {scientificIds.spin_code || 'Не найден'}
+          </div>
+          <div className="info-item">
+            <strong>Email для корреспонденции:</strong> {scientificIds.email_for_correspondence || 'Не определен'}
+          </div>
+          {scientificIds.alternative_emails && (
+            <div className="info-item">
+              <strong>Альтернативные email:</strong> {scientificIds.alternative_emails.join(', ')}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="info-card">
+        <h3>📊 Метаданные поиска</h3>
+        <div className="info-content">
+          <div className="info-item">
+            <strong>Найдено результатов:</strong> {searchMetadata.results_count || 0}
+          </div>
+          <div className="info-item">
+            <strong>Метод поиска:</strong> {getSearchMethodText(searchMetadata.search_method)}
+          </div>
+          <div className="info-item">
+            <strong>Статус:</strong> {searchMetadata.status || 'unknown'}
+          </div>
+          <div className="info-item">
+            <strong>Источники:</strong> {informationSources.length || 0} источников
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Компонент для анализа веб-страниц
+const WebpageAnalysis = ({ data }) => {
+  const webpageAnalysis = data?.webpage_analysis;
+
+  if (!webpageAnalysis) {
+    return (
+      <div className="error-message">
+        <h3>Анализ веб-страниц недоступен</h3>
+        <p>Возможные причины:</p>
+        <ul>
+          <li>Используется кэшированный результат</li>
+          <li>Анализатор веб-страниц отключен</li>
+          <li>Не найдено подходящих ссылок для анализа</li>
+        </ul>
+      </div>
+    );
+  }
+
+  const ownerData = webpageAnalysis.owner_identification || {};
+  const professionalData = webpageAnalysis.professional_details || {};
+  const contactData = webpageAnalysis.contact_information || {};
+  const academicData = webpageAnalysis.academic_info || {};
+  const metaData = webpageAnalysis.analysis_metadata || {};
+
+  return (
+    <div className="webpage-analysis">
+      <div className="analysis-header">
+        <h2>🔍 Анализ веб-страниц</h2>
+        <div className="confidence-score">
+          Уверенность: {Math.round((ownerData.confidence_score || 0) * 100)}%
+        </div>
+      </div>
+
+      <div className="analysis-grid">
+        <div className="analysis-section">
+          <h3><span className="section-icon">👤</span>Идентификация владельца</h3>
+          <div className="extracted-data">
+            <div className="data-item-label">Наиболее вероятное имя:</div>
+            <div className="data-item-value">{ownerData.most_likely_name || 'Не определено'}</div>
+            
+            <div className="data-item-label">Найдено имен:</div>
+            <div className="data-item-value">{ownerData.names_found?.length || 0}</div>
+            
+            {ownerData.name_variations?.length > 0 && (
+              <>
+                <div className="data-item-label">Вариации имен:</div>
+                <div className="tags-container">
+                  {ownerData.name_variations.map((name, idx) => (
+                    <span key={idx} className="tag">{name}</span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="analysis-section">
+          <h3><span className="section-icon">💼</span>Профессиональные данные</h3>
+          <div className="extracted-data">
+            {professionalData.positions?.length > 0 ? (
+              <>
+                <div className="data-item-label">Должности:</div>
+                <div className="tags-container">
+                  {professionalData.positions.map((pos, idx) => (
+                    <span key={idx} className="tag">{pos}</span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div>Должности не найдены</div>
+            )}
+            
+            {professionalData.organizations?.length > 0 && (
+              <>
+                <div className="data-item-label">Организации:</div>
+                <div className="tags-container">
+                  {professionalData.organizations.map((org, idx) => (
+                    <span key={idx} className="tag">{org}</span>
+                  ))}
+                </div>
+              </>
+            )}
+            
+            {professionalData.locations?.length > 0 && (
+              <>
+                <div className="data-item-label">Локации:</div>
+                <div className="tags-container">
+                  {professionalData.locations.map((loc, idx) => (
+                    <span key={idx} className="tag">{loc}</span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="analysis-section">
+          <h3><span className="section-icon">📞</span>Контактная информация</h3>
+          <div className="extracted-data">
+            {contactData.emails?.length > 0 ? (
+              <>
+                <div className="data-item-label">Email адреса:</div>
+                <div className="tags-container">
+                  {contactData.emails.map((email, idx) => (
+                    <span key={idx} className="tag">{email}</span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div>Дополнительные email не найдены</div>
+            )}
+            
+            {contactData.phones?.length > 0 && (
+              <>
+                <div className="data-item-label">Телефоны:</div>
+                <div className="tags-container">
+                  {contactData.phones.map((phone, idx) => (
+                    <span key={idx} className="tag">{phone}</span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="analysis-section">
+          <h3><span className="section-icon">🎓</span>Академическая информация</h3>
+          <div className="extracted-data">
+            {academicData.degrees?.length > 0 ? (
+              <>
+                <div className="data-item-label">Ученые степени:</div>
+                <div className="tags-container">
+                  {academicData.degrees.map((degree, idx) => (
+                    <span key={idx} className="tag">{degree}</span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div>Ученые степени не найдены</div>
+            )}
+            
+            {academicData.research_areas?.length > 0 && (
+              <>
+                <div className="data-item-label">Области исследований:</div>
+                <div className="tags-container">
+                  {academicData.research_areas.slice(0, 5).map((area, idx) => (
+                    <span key={idx} className="tag">{area}</span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="url-analysis">
+        <h3>🌐 Анализ URL адресов</h3>
+        <p style={{ marginBottom: '15px', color: '#666' }}>
+          Успешно проанализировано: <strong>{metaData.successful_extractions || 0}</strong> из <strong>{metaData.analyzed_urls?.length || 0}</strong> страниц
+        </p>
+        
+        {metaData.analyzed_urls?.length > 0 ? (
+          metaData.analyzed_urls.map((urlData, idx) => (
+            <div key={idx} className={`url-item ${urlData.status === 'success' ? 'success' : 'failed'}`}>
+              <a href={urlData.url} target="_blank" rel="noopener noreferrer" className="url">
+                {urlData.url}
+              </a>
+              <span className={`status ${urlData.status}`}>
+                {urlData.status === 'success' ? '✅ Успешно' : '❌ Неудачно'}
+              </span>
+              {urlData.extracted_data_types && (
+                <div style={{ marginTop: '8px' }}>
+                  <small><strong>Извлечены данные:</strong> {urlData.extracted_data_types.join(', ')}</small>
+                </div>
+              )}
+              {urlData.reason && (
+                <div style={{ marginTop: '8px' }}>
+                  <small><strong>Причина:</strong> {urlData.reason}</small>
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <p>Нет данных об анализе URL</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Компонент для публикаций
+const Publications = ({ data }) => {
+  const publications = data?.publications || [];
+
+  if (publications.length === 0) {
+    return (
+      <div className="error-message">
+        Публикации не найдены или не удалось их извлечь из анализируемых источников.
+      </div>
+    );
+  }
+
+  return (
+    <div className="publications-container">
+      <h3>📚 Публикации ({publications.length})</h3>
+      {publications.map((pub, idx) => (
+        <div key={idx} className="publication-item">
+          <div className="publication-title">{pub.title || 'Без названия'}</div>
+          <div className="publication-details">
+            <div className="publication-info">
+              <strong>Авторы:</strong> {pub.authors || 'Не указаны'}
+            </div>
+            <div className="publication-info">
+              <strong>Журнал:</strong> {pub.journal || 'Не указан'}
+            </div>
+            <div className="publication-info">
+              <strong>Год:</strong> {pub.year || 'Не указан'}
+            </div>
+            <div className="publication-info">
+              <strong>DOI:</strong> {pub.doi || 'Не найден'}
+            </div>
+            {pub.url && (
+              <div className="publication-info">
+                <strong>URL:</strong> <a href={pub.url} target="_blank" rel="noopener noreferrer">{pub.url}</a>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Компонент для временной шкалы
+const Timeline = ({ data }) => {
+  const publications = data?.publications || [];
+  const searchMetadata = data?.search_metadata || {};
+  
+  let timelineEvents = [];
+  
+  // Добавляем публикации в timeline
+  publications.forEach(pub => {
+    if (pub.year) {
+      timelineEvents.push({
+        year: parseInt(pub.year),
+        type: 'publication',
+        title: pub.title || 'Публикация без названия',
+        description: `Журнал: ${pub.journal || 'Не указан'}`,
+        authors: pub.authors || 'Авторы не указаны'
+      });
+    }
+  });
+  
+  // Добавляем текущий поиск
+  if (searchMetadata.timestamp) {
+    timelineEvents.push({
+      year: new Date(searchMetadata.timestamp * 1000).getFullYear(),
+      type: 'search',
+      title: 'Анализ данных',
+      description: `Найдено ${searchMetadata.results_count || 0} результатов`
+    });
+  }
+  
+  // Сортируем по годам
+  timelineEvents.sort((a, b) => b.year - a.year);
+  
+  if (timelineEvents.length === 0) {
+    return (
+      <div className="error-message">
+        Недостаточно данных для построения временной шкалы.
+        Добавьте информацию о публикациях или деятельности.
+      </div>
+    );
+  }
+
+  return (
+    <div className="timeline-container">
+      <h3>⏰ Временная шкала активности</h3>
+      <div className="timeline-events">
+        {timelineEvents.map((event, idx) => (
+          <div key={idx} className={`timeline-item ${event.type}`}>
+            <div className="timeline-content">
+              <div className="timeline-info">
+                <h4>
+                  {event.type === 'publication' ? '📚' : '🔍'} {event.title}
+                </h4>
+                <p className="timeline-description">{event.description}</p>
+                {event.authors && (
+                  <p className="timeline-authors">Авторы: {event.authors}</p>
+                )}
+              </div>
+              <div className="timeline-year">
+                {event.year}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Компонент для сетей и связей
+const Networks = ({ data }) => {
+  const contactInfo = data?.webpage_analysis?.contact_information || {};
+  const professionalInfo = data?.professional_info || {};
+  const scientificIds = data?.scientific_identifiers || {};
+  
+  let networks = [];
+  
+  // Email сети
+  if (contactInfo.emails && contactInfo.emails.length > 0) {
+    networks.push({
+      type: 'email',
+      title: 'Email адреса',
+      items: contactInfo.emails,
+      icon: '📧'
+    });
+  }
+  
+  // Научные сети
+  if (scientificIds.orcid_id && scientificIds.orcid_id !== 'Не найден') {
+    networks.push({
+      type: 'scientific',
+      title: 'ORCID',
+      items: [scientificIds.orcid_id],
+      icon: '🔬',
+      links: [`https://orcid.org/${scientificIds.orcid_id}`]
+    });
+  }
+  
+  // Организационные связи
+  if (professionalInfo.workplace && professionalInfo.workplace !== 'Не определено') {
+    networks.push({
+      type: 'organization',
+      title: 'Организация',
+      items: [professionalInfo.workplace],
+      icon: '🏢'
+    });
+  }
+  
+  // Сайты и профили
+  if (contactInfo.websites && contactInfo.websites.length > 0) {
+    networks.push({
+      type: 'web',
+      title: 'Веб-присутствие',
+      items: contactInfo.websites,
+      icon: '🌐',
+      links: contactInfo.websites
+    });
+  }
+  
+  if (networks.length === 0) {
+    return (
+      <div className="error-message">
+        Сетевые связи не обнаружены. 
+        Для построения карты связей необходимо больше информации о контактах и профилях.
+      </div>
+    );
+  }
+
+  return (
+    <div className="networks-container">
+      <h3>🌐 Сети и связи</h3>
+      <div className="networks-grid">
+        {networks.map((network, idx) => (
+          <div key={idx} className="network-item">
+            <h4>
+              <span className="network-icon">{network.icon}</span>
+              {network.title}
+            </h4>
+            <div className="network-items">
+              {network.items.map((item, itemIdx) => {
+                const link = network.links && network.links[itemIdx];
+                return (
+                  <div key={itemIdx} className="network-item-value">
+                    {link ? (
+                      <a href={link} target="_blank" rel="noopener noreferrer">
+                        {item}
+                      </a>
+                    ) : (
+                      <span>{item}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      {networks.length > 1 && (
+        <div className="networks-analysis">
+          <h4>📊 Анализ связей</h4>
+          <p>
+            Обнаружено <strong>{networks.length}</strong> типов сетевых связей. 
+            Это указывает на {networks.length >= 3 ? 'высокую' : networks.length >= 2 ? 'среднюю' : 'низкую'} 
+            степень цифрового присутствия.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Компонент для выводов и аналитики
+const Conclusions = ({ data }) => {
+  const conclusions = data?.conclusions || [];
+  const researchInterests = data?.research_interests || [];
+  const searchMetadata = data?.search_metadata || {};
+  const informationSources = data?.information_sources || [];
+
+  const getSearchMethodText = (method) => {
+    const methodMap = {
+      'real_api': '🔗 API поисковых систем',
+      'alternative': '🔄 Альтернативный поиск',
+      'fallback': '⚡ Резервный режим',
+      'cache': '💾 Кэш',
+      'demo': '🎭 Демо режим'
+    };
+    return methodMap[method] || method || 'Неизвестно';
+  };
+
+  return (
+    <div className="conclusions-container">
+      {conclusions.length > 0 && (
+        <div className="conclusions-section">
+          <h3>💡 Основные выводы</h3>
+          {conclusions.map((conclusion, idx) => (
+            <div key={idx} className="conclusion-item">• {conclusion}</div>
+          ))}
+        </div>
+      )}
+
+      {researchInterests.length > 0 && (
+        <div className="research-interests-section">
+          <h3>🔬 Области научных интересов</h3>
+          <div className="tags-container">
+            {researchInterests.map((interest, idx) => (
+              <span key={idx} className="tag">{interest}</span>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      <div className="analytics-section">
+        <h3>📊 Аналитика поиска</h3>
+        <div className="analytics-grid">
+          <div className="analytics-item">
+            <div className="analytics-label">Результатов найдено:</div>
+            <div className="analytics-value primary">{searchMetadata.results_count || 0}</div>
+          </div>
+          <div className="analytics-item">
+            <div className="analytics-label">Источников данных:</div>
+            <div className="analytics-value secondary">{informationSources.length || 0}</div>
+          </div>
+          <div className="analytics-item">
+            <div className="analytics-label">Метод поиска:</div>
+            <div className="analytics-value">{getSearchMethodText(searchMetadata.search_method)}</div>
+          </div>
+          <div className="analytics-item">
+            <div className="analytics-label">Время анализа:</div>
+            <div className="analytics-value">
+              {searchMetadata.timestamp ? 
+                new Date(searchMetadata.timestamp * 1000).toLocaleString('ru-RU') : 
+                'Неизвестно'
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {informationSources.length > 0 && (
+        <div className="sources-section">
+          <h4>📋 Источники информации</h4>
+          <div className="tags-container">
+            {informationSources.map((source, idx) => (
+              <span key={idx} className="tag source-tag">{source}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {conclusions.length === 0 && researchInterests.length === 0 && (
+        <div className="error-message">
+          Выводы и научные интересы не определены.
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Главный компонент приложения
+const EnhancedEmailSearchApp = () => {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [data, setData] = useState(null);
+  const [activeTab, setActiveTab] = useState('basic');
+  const [searchMethod, setSearchMethod] = useState('auto');
+
+  const tabs = [
+    { id: 'basic', title: 'Основная информация', icon: '📋' },
+    { id: 'webpage', title: 'Анализ веб-страниц', icon: '🔍' },
+    { id: 'publications', title: 'Публикации', icon: '📚' },
+    { id: 'timeline', title: 'Временная шкала', icon: '⏰' },
+    { id: 'networks', title: 'Сети и связи', icon: '🌐' },
+    { id: 'conclusions', title: 'Выводы и аналитика', icon: '💡' }
+  ];
+
+  const searchEmail = async () => {
+    if (!email.trim()) {
+      setError('Пожалуйста, введите email адрес');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setData(null);
+
+    try {
+      const response = await fetch('/api/email/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          email: email.trim(),
+          search_method: searchMethod
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setData(result);
+      setActiveTab('basic');
+
+    } catch (err) {
+      console.error('Ошибка:', err);
+      setError('Произошла ошибка при выполнении поиска: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDemo = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/email/demo');
+      const result = await response.json();
+      
+      if (response.ok) {
+        setData(result);
+        setEmail(result.email);
+        setActiveTab('basic');
+      } else {
+        setError('Ошибка загрузки демо данных');
+      }
+    } catch (err) {
+      setError('Ошибка соединения с сервером');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderTabContent = () => {
+    if (!data) return null;
+
+    switch (activeTab) {
+      case 'basic':
+        return <BasicInfo data={data} />;
+      case 'webpage':
+        return <WebpageAnalysis data={data} />;
+      case 'publications':
+        return <Publications data={data} />;
+      case 'timeline':
+        return <Timeline data={data} />;
+      case 'networks':
+        return <Networks data={data} />;
+      case 'conclusions':
+        return <Conclusions data={data} />;
+      default:
+        return <BasicInfo data={data} />;
+    }
+  };
+
+  return (
+    <div className="enhanced-app">
+      <div className="header">
+        <h1>📧 Email Intelligence System</h1>
+        <p>Расширенный анализ email адресов с изучением веб-страниц</p>
+      </div>
+
+      <div className="search-section">
+        <div className="search-form">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Введите email адрес для анализа..."
+            className="search-input"
+            onKeyPress={(e) => e.key === 'Enter' && searchEmail()}
+          />
+          <button 
+            onClick={searchEmail} 
+            disabled={loading}
+            className="search-btn"
+          >
+            {loading ? '⏳ Анализируем...' : '🔍 Анализ'}
+          </button>
+          <button 
+            onClick={loadDemo} 
+            disabled={loading}
+            className="search-btn demo-btn"
+          >
+            🎭 Показать демо
+          </button>
+        </div>
+
+        <div className="search-options">
+          <h3>🔧 Настройки поиска</h3>
+          <div className="search-method-options">
+            <label>
+              <input
+                type="radio"
+                value="auto"
+                checked={searchMethod === 'auto'}
+                onChange={(e) => setSearchMethod(e.target.value)}
+              />
+              Автоматический выбор
+            </label>
+            <label>
+              <input
+                type="radio"
+                value="google_api"
+                checked={searchMethod === 'google_api'}
+                onChange={(e) => setSearchMethod(e.target.value)}
+              />
+              Google Search API
+            </label>
+            <label>
+              <input
+                type="radio"
+                value="browser_search"
+                checked={searchMethod === 'browser_search'}
+                onChange={(e) => setSearchMethod(e.target.value)}
+              />
+              Браузерный поиск
+            </label>
+          </div>
+        </div>
+
+        {error && (
+          <div className="error-message">
+            {error}
+          </div>
+        )}
+      </div>
+
+      {(data || loading) && (
+        <div className="results-section">
+          <TabNavigator 
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            tabs={tabs}
+          />
+          
+          <div className="tab-content">
+            {loading ? (
+              <div className="loading">
+                Анализируем данные, пожалуйста подождите...
+              </div>
+            ) : (
+              renderTabContent()
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Стили
+const styles = `
+  .enhanced-app {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+
+  .header {
+    text-align: center;
+    color: white;
+    margin-bottom: 30px;
+  }
+
+  .header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+  }
+
+  .header p {
+    font-size: 1.1rem;
+    opacity: 0.9;
+  }
+
+  .search-section {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    margin-bottom: 30px;
+  }
+
+  .search-form {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .search-input {
+    flex: 1;
+    padding: 15px;
+    border: 2px solid #e1e5e9;
+    border-radius: 10px;
+    font-size: 16px;
+    min-width: 250px;
+  }
+
+  .search-input:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+
+  .search-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+
+  .search-btn:hover {
+    transform: translateY(-2px);
+  }
+
+  .search-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .demo-btn {
+    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  }
+
+  .search-options {
+    margin: 20px 0;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    border: 1px solid #e1e5e9;
+  }
+
+  .search-options h3 {
+    margin-bottom: 15px;
+    color: #333;
+    font-size: 1.1rem;
+  }
+
+  .search-method-options {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .search-method-options label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #555;
+    font-weight: 500;
+  }
+
+  .tabs-container {
+    background: white;
+    border-radius: 15px 15px 0 0;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  }
+
+  .tabs-header {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .tab-btn {
+    flex: 1;
+    padding: 15px 20px;
+    background: #f8f9fa;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s;
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+  }
+
+  .tab-btn.active {
+    background: white;
+    border-bottom-color: #667eea;
+    color: #667eea;
+  }
+
+  .tab-content {
+    background: white;
+    border-radius: 0 0 15px 15px;
+    padding: 30px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  }
+
+  .basic-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+  }
+
+  .info-card {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    border-left: 4px solid #667eea;
+  }
+
+  .info-card h3 {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+  }
+
+  .info-content {
+    space-y: 10px;
+  }
+
+  .info-item {
+    margin-bottom: 10px;
+    color: #666;
+    line-height: 1.5;
+  }
+
+  .analysis-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px;
+  }
+
+  .confidence-score {
+    background: rgba(255,255,255,0.2);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 600;
+  }
+
+  .analysis-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  .analysis-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    border: 1px solid #e1e5e9;
+  }
+
+  .analysis-section h3 {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-icon {
+    width: 24px;
+    height: 24px;
+    background: #667eea;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 12px;
+  }
+
+  .extracted-data {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+  }
+
+  .data-item-label {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 5px;
+  }
+
+  .data-item-value {
+    color: #666;
+    margin-bottom: 10px;
+  }
+
+  .tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .tag {
+    padding: 6px 12px;
+    background: #e3f2fd;
+    border-radius: 20px;
+    font-size: 14px;
+    color: #1976d2;
+    display: inline-block;
+  }
+
+  .source-tag {
+    background: #e8f5e8;
+    color: #2e7d2e;
+  }
+
+  .url-analysis {
+    margin-top: 20px;
+  }
+
+  .url-item {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    border-left: 4px solid #4caf50;
+  }
+
+  .url-item.failed {
+    border-left-color: #f44336;
+  }
+
+  .url-item .url {
+    font-weight: 600;
+    color: #1976d2;
+    text-decoration: none;
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  .status {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 12px;
+    display: inline-block;
+  }
+
+  .status.success {
+    background: #e8f5e8;
+    color: #2e7d2e;
+  }
+
+  .status.failed {
+    background: #ffebee;
+    color: #c62828;
+  }
+
+  .publications-container h3 {
+    margin-bottom: 20px;
+    color: #333;
+  }
+
+  .publication-item {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    border-left: 4px solid #667eea;
+  }
+
+  .publication-title {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+  }
+
+  .publication-info {
+    color: #666;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 5px;
+  }
+
+  .timeline-container h3 {
+    margin-bottom: 20px;
+    color: #333;
+  }
+
+  .timeline-events {
+    space-y: 15px;
+  }
+
+  .timeline-item {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+  }
+
+  .timeline-item.publication {
+    border-left: 4px solid #667eea;
+  }
+
+  .timeline-item.search {
+    border-left: 4px solid #4caf50;
+  }
+
+  .timeline-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .timeline-info {
+    flex: 1;
+  }
+
+  .timeline-info h4 {
+    margin: 0 0 8px 0;
+    color: #333;
+  }
+
+  .timeline-description {
+    margin: 0 0 5px 0;
+    color: #666;
+    font-size: 14px;
+  }
+
+  .timeline-authors {
+    margin: 0;
+    color: #888;
+    font-size: 12px;
+  }
+
+  .timeline-year {
+    background: #667eea;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 14px;
+    min-width: 60px;
+    text-align: center;
+  }
+
+  .timeline-item.search .timeline-year {
+    background: #4caf50;
+  }
+
+  .networks-container h3 {
+    margin-bottom: 20px;
+    color: #333;
+  }
+
+  .networks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  .network-item {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    border-left: 4px solid #667eea;
+  }
+
+  .network-item h4 {
+    margin: 0 0 15px 0;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .network-icon {
+    font-size: 20px;
+  }
+
+  .network-item-value {
+    background: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border: 1px solid #e1e5e9;
+  }
+
+  .network-item-value a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .networks-analysis {
+    margin-top: 30px;
+    padding: 20px;
+    background: #e3f2fd;
+    border-radius: 10px;
+    border-left: 4px solid #2196f3;
+  }
+
+  .networks-analysis h4 {
+    margin: 0 0 10px 0;
+    color: #1976d2;
+  }
+
+  .networks-analysis p {
+    margin: 0;
+    color: #1976d2;
+    font-size: 14px;
+  }
+
+  .conclusions-container > div {
+    margin-bottom: 30px;
+  }
+
+  .conclusions-section h3,
+  .research-interests-section h3,
+  .analytics-section h3 {
+    margin-bottom: 15px;
+    color: #333;
+  }
+
+  .conclusion-item {
+    margin-bottom: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid #e1e5e9;
+    color: #666;
+  }
+
+  .conclusion-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+
+  .analytics-section {
+    background: #f0f8ff;
+    padding: 20px;
+    border-radius: 10px;
+    border-left: 4px solid #667eea;
+  }
+
+  .analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+  }
+
+  .analytics-item {
+    text-align: center;
+  }
+
+  .analytics-label {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+  }
+
+  .analytics-value {
+    font-size: 14px;
+    color: #666;
+  }
+
+  .analytics-value.primary {
+    font-size: 24px;
+    color: #667eea;
+    font-weight: 600;
+  }
+
+  .analytics-value.secondary {
+    font-size: 24px;
+    color: #4caf50;
+    font-weight: 600;
+  }
+
+  .sources-section h4 {
+    margin-top: 25px;
+    margin-bottom: 15px;
+    color: #333;
+  }
+
+  .loading {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+    position: relative;
+  }
+
+  .loading::after {
+    content: '';
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 10px;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  .error-message {
+    background: #ffebee;
+    color: #c62828;
+    padding: 15px;
+    border-radius: 10px;
+    margin: 20px 0;
+    border-left: 4px solid #f44336;
+  }
+
+  @media (max-width: 768px) {
+    .enhanced-app {
+      padding: 10px;
+    }
+
+    .header h1 {
+      font-size: 2rem;
+    }
+
+    .search-form {
+      flex-direction: column;
+    }
+
+    .search-input {
+      min-width: auto;
+    }
+
+    .tabs-header {
+      flex-direction: column;
+    }
+
+    .basic-info-grid,
+    .analysis-grid,
+    .networks-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .timeline-content {
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .timeline-year {
+      align-self: flex-start;
+    }
+  }
+`;
+
+// Добавляем стили на страницу
+const styleSheet = document.createElement('style');
+styleSheet.textContent = styles;
+document.head.appendChild(styleSheet);
+
+// Рендерим приложение
+const root = createRoot(document.getElementById('root'));
+root.render(<EnhancedEmailSearchApp />);
+
+export default EnhancedEmailSearchApp;
