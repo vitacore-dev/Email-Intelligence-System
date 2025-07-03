@@ -1,125 +1,167 @@
-# Email Search Service v2.0 - Complete Package
+# Email Intelligence System
 
-🔍 **Профессиональный сервис для поиска информации по email адресам**
+🔍 **Профессиональная система для поиска и анализа информации по email адресам**
 
-Полный production-ready пакет с расширенными возможностями безопасности, мониторинга и масштабирования.
+Production-ready решение с расширенными возможностями NLP анализа, безопасности, мониторинга и масштабирования.
 
-## 📦 Содержимое пакета
+## 🌟 Особенности
 
-```
-email-search-service-v2-complete/
-├── README.md                          # Этот файл
-├── email-search-backend/              # Backend Flask приложение
-│   ├── src/                           # Исходный код
-│   ├── data/                          # База данных и кэш
-│   ├── requirements.txt               # Python зависимости
-│   ├── Dockerfile                     # Docker образ
-│   ├── docker-compose.yml             # Docker Compose конфигурация
-│   ├── nginx.conf                     # Nginx конфигурация
-│   ├── .env.example                   # Пример конфигурации
-│   └── README.md                      # Backend документация
-├── email-search-frontend/             # Frontend React приложение
-│   ├── src/                           # Исходный код React
-│   ├── package.json                   # Node.js зависимости
-│   ├── vite.config.js                 # Vite конфигурация
-│   └── dist/                          # Production build
-└── docs/                              # Документация
-    ├── email-search-service-v2-documentation.md
-    ├── api-quick-start-guide.md
-    ├── deployment-guide.md
-    └── email_research.md
-```
+- 🔍 **Интеграция с реальными поисковыми API** (Google, Bing)
+- 🔬 **Интеграция с Scopus API** для поиска научных публикаций
+- 🆔 **Интеграция с ORCID API** для профилей исследователей
+- 🧠 **Продвинутый NLP анализ** с spaCy, Natasha, pymorphy
+- 📄 **Enhanced PDF анализ** с извлечением метаданных
+- 🌐 **Интеллектуальный веб-анализ** с SSL поддержкой
+- 💾 **Система кэширования** результатов в SQLite
+- 🛡️ **Rate Limiting** с многоуровневыми ограничениями
+- 🔐 **Аутентификация** (JWT + API ключи)
+- 📊 **Мониторинг и логирование** всех операций
+- 🎨 **Современный веб-интерфейс** на React
+- 🚀 **Production-ready** архитектура
+- 🔗 **Комбинированный поиск** по нескольким научным базам данных
 
 ## 🚀 Быстрый старт
 
-### Вариант 1: Docker (Рекомендуется)
+### Предварительные требования
+
+- Python 3.8+
+- Node.js 16+
+- npm или yarn
+
+### 1. Установка backend
 
 ```bash
-# Переход в директорию backend
 cd email-search-backend
 
-# Настройка конфигурации
-cp .env.example .env
-# Отредактируйте .env файл
+# Создание виртуального окружения
+python -m venv venv
 
-# Запуск с Docker Compose
-docker-compose up -d
+# Активация виртуального окружения
+# Linux/Mac:
+source venv/bin/activate
+# Windows:
+venv\Scripts\activate
 
-# Проверка статуса
-curl http://localhost:5000/api/email/health
+# Установка зависимостей
+pip install -r requirements.txt
 ```
 
-### Вариант 2: Ручная установка
+### 2. Установка frontend
 
 ```bash
-# Backend
-cd email-search-backend
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
-pip install -r requirements.txt
-
-# Frontend (если нужна пересборка)
 cd ../email-search-frontend
-npm install
-npm run build
-cp -r dist/* ../email-search-backend/src/static/
 
-# Запуск
+# Установка зависимостей
+npm install
+
+# Сборка для production
+npm run build
+```
+
+### 3. Интеграция frontend с backend
+
+```bash
+# Копирование build файлов в backend
+cp -r dist/* ../email-search-backend/src/static/
+```
+
+### 4. Запуск сервиса
+
+```bash
 cd ../email-search-backend
+
+# Запуск Flask сервера
 python src/main.py
 ```
 
-## ✨ Основные возможности
-
-### 🔍 **Поиск по email**
-- Интеграция с Google Custom Search API
-- Интеграция с Bing Search API
-- Интеллектуальная обработка результатов
-- Fallback на mock данные
-
-### 💾 **Кэширование**
-- SQLite база данных
-- Настраиваемое время жизни кэша
-- API управления кэшем
-- Статистика эффективности
-
-### 🛡️ **Безопасность**
-- JWT токены для веб-интерфейса
-- API ключи для программного доступа
-- Rate limiting с многоуровневыми ограничениями
-- Безопасное хранение паролей (bcrypt)
-
-### 📊 **Мониторинг**
-- Детальное логирование всех запросов
-- Метрики производительности
-- Статистика использования
-- Мониторинг системных ресурсов
-
-### 🎨 **Веб-интерфейс**
-- Современный React интерфейс
-- Система аутентификации
-- Адаптивный дизайн
-- Статистика для пользователей
+Сервис будет доступен по адресу: http://localhost:5000
 
 ## 🔧 Конфигурация
 
-### Основные настройки (.env файл)
+### Переменные окружения
+
+Создайте файл `.env` в корне backend проекта:
 
 ```env
-# Flask
-FLASK_ENV=production
-JWT_SECRET_KEY=your-secret-key
-
 # Поисковые API (опционально)
 GOOGLE_API_KEY=your_google_api_key
+GOOGLE_SEARCH_ENGINE_ID=your_search_engine_id
 BING_API_KEY=your_bing_api_key
+
+# Научные API
+SCOPUS_API_KEY=your_scopus_api_key
+ORCID_CLIENT_ID=your_orcid_client_id
+ORCID_CLIENT_SECRET=your_orcid_client_secret
+
+# JWT секретный ключ
+JWT_SECRET_KEY=your_super_secret_jwt_key
 
 # База данных
 DATABASE_PATH=data/email_search.db
+
+# Flask настройки
+FLASK_ENV=production
+FLASK_DEBUG=False
 ```
 
-### Типы пользователей и лимиты
+### Настройка поисковых API
+
+#### Google Custom Search API
+1. Перейдите в [Google Cloud Console](https://console.cloud.google.com/)
+2. Создайте новый проект или выберите существующий
+3. Включите Custom Search API
+4. Создайте API ключ
+5. Настройте Custom Search Engine на [cse.google.com](https://cse.google.com/)
+
+#### Bing Search API
+1. Перейдите в [Azure Portal](https://portal.azure.com/)
+2. Создайте ресурс "Bing Search v7"
+3. Получите API ключ из раздела "Keys and Endpoint"
+
+#### Scopus API
+1. Зарегистрируйтесь на [Elsevier Developer Portal](https://dev.elsevier.com/)
+2. Создайте новое приложение
+3. Получите API ключ
+4. Добавьте в `.env`: `SCOPUS_API_KEY=your_scopus_api_key`
+
+#### ORCID API
+1. Зарегистрируйтесь на [ORCID Developer Tools](https://orcid.org/developer-tools)
+2. Создайте новое приложение
+3. Получите Client ID и Client Secret
+4. Добавьте в `.env`:
+   ```
+   ORCID_CLIENT_ID=your_orcid_client_id
+   ORCID_CLIENT_SECRET=your_orcid_client_secret
+   ```
+
+## 📁 Структура проекта
+
+```
+email-search-service-v2/
+├── email-search-backend/          # Backend Flask приложение
+│   ├── src/
+│   │   ├── main.py                # Основное приложение
+│   │   ├── routes/                # API endpoints
+│   │   ├── services/              # Бизнес-логика
+│   │   ├── middleware/            # Middleware компоненты
+│   │   └── static/                # Frontend build файлы
+│   ├── data/                      # База данных SQLite
+│   ├── requirements.txt           # Python зависимости
+│   └── README.md                  # Этот файл
+├── email-search-frontend/         # Frontend React приложение
+│   ├── src/
+│   │   ├── components/            # React компоненты
+│   │   └── App.jsx               # Основной компонент
+│   ├── package.json              # Node.js зависимости
+│   └── vite.config.js            # Vite конфигурация
+└── docs/                         # Документация
+    ├── api-documentation.md      # API документация
+    └── deployment-guide.md       # Руководство по развертыванию
+```
+
+## 🔐 Аутентификация
+
+### Типы пользователей
 
 | Тип | Запросов/мин | Запросов/час | Особенности |
 |-----|--------------|--------------|-------------|
@@ -128,194 +170,215 @@ DATABASE_PATH=data/email_search.db
 | Премиум | 30 | 500 | Расширенные возможности |
 | Корпоративный | 100 | 2000 | Максимальные лимиты |
 
-## 📚 Документация
+### Создание администратора
 
-- **[Backend README](email-search-backend/README.md)** - Подробная документация backend
-- **[API Quick Start Guide](docs/api-quick-start-guide.md)** - Быстрое руководство по API
-- **[Deployment Guide](docs/deployment-guide.md)** - Руководство по развертыванию
-- **[Full Documentation](docs/email-search-service-v2-documentation.md)** - Полная техническая документация
+```bash
+# Запустите Python в директории проекта
+python -c "
+from src.services.auth_service import AuthService
+auth = AuthService()
+auth.create_user('admin', 'admin@example.com', 'secure_password', 'enterprise')
+print('Администратор создан')
+"
+```
 
-## 🌐 API Endpoints
+## 📊 API Endpoints
 
 ### Основные
-- `POST /api/email/search` - Поиск по email
 - `GET /api/email/health` - Статус сервиса
+- `POST /api/email/search` - Поиск по email
 - `GET /api/email/demo` - Демо данные
+- `POST /api/email/validate` - Валидация email
 
 ### Аутентификация
 - `POST /api/auth/register` - Регистрация
-- `POST /api/auth/login` - Вход в систему
+- `POST /api/auth/login` - Вход
+- `POST /api/auth/verify-token` - Проверка токена
 
 ### Мониторинг
 - `GET /api/monitoring/stats/summary` - Статистика
 - `GET /api/cache/stats` - Статистика кэша
 - `GET /api/rate-limit/status` - Статус лимитов
 
-## 🔄 Примеры использования
+### Научные API
+- `POST /api/scientific/scopus/search-by-email` - Поиск в Scopus по email
+- `POST /api/scientific/scopus/search-publications` - Поиск публикаций в Scopus
+- `GET /api/scientific/scopus/publication/{id}` - Детали публикации
+- `POST /api/scientific/orcid/search-by-email` - Поиск в ORCID по email
+- `GET /api/scientific/orcid/profile/{orcid_id}` - Профиль исследователя
+- `POST /api/scientific/combined-search` - Комбинированный поиск
+- `GET /api/scientific/api-status` - Статус научных API
 
-### Демо запрос
+## 🚀 Развертывание
+
+### Docker (рекомендуется)
+
 ```bash
-curl -X GET "http://localhost:5000/api/email/demo"
+# Сборка образа
+docker build -t email-search-service .
+
+# Запуск контейнера
+docker run -p 5000:5000 -v $(pwd)/data:/app/data email-search-service
 ```
 
-### Поиск с аутентификацией
-```bash
-curl -X POST "http://localhost:5000/api/email/search" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -d '{"email": "example@domain.com"}'
+### Systemd сервис (Linux)
+
+Создайте файл `/etc/systemd/system/email-search.service`:
+
+```ini
+[Unit]
+Description=Email Search Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/path/to/email-search-backend
+Environment=PATH=/path/to/email-search-backend/venv/bin
+ExecStart=/path/to/email-search-backend/venv/bin/python src/main.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-### Регистрация пользователя
+Активация:
 ```bash
-curl -X POST "http://localhost:5000/api/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "testuser",
-    "email": "test@example.com",
-    "password": "securepassword123",
-    "user_type": "free"
-  }'
-```
-
-## 🚀 Production развертывание
-
-### Docker Compose (Рекомендуется)
-```bash
-cd email-search-backend
-docker-compose up -d
-```
-
-### Systemd сервис
-```bash
-# См. deployment-guide.md для подробных инструкций
 sudo systemctl enable email-search
 sudo systemctl start email-search
 ```
 
-### Nginx Reverse Proxy
-```bash
-# Конфигурация включена в nginx.conf
-sudo ln -s /path/to/nginx.conf /etc/nginx/sites-enabled/
-sudo systemctl reload nginx
+### Nginx конфигурация
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
 ```
 
 ## 🔧 Разработка
 
-### Структура backend
-```
-src/
-├── main.py                    # Основное приложение
-├── routes/                    # API endpoints
-│   ├── email_search.py       # Поиск по email
-│   ├── auth_management.py    # Аутентификация
-│   ├── cache_management.py   # Управление кэшем
-│   └── monitoring.py         # Мониторинг
-├── services/                  # Бизнес-логика
-│   ├── search_engines.py     # Поисковые системы
-│   ├── database.py           # База данных
-│   ├── auth_service.py       # Аутентификация
-│   └── monitoring_service.py # Мониторинг
-├── middleware/                # Middleware
-│   ├── auth_middleware.py    # Аутентификация
-│   ├── rate_limit_middleware.py # Rate limiting
-│   └── logging_middleware.py # Логирование
-└── static/                    # Frontend build
-```
-
 ### Запуск в режиме разработки
+
+Backend:
 ```bash
-# Backend
+cd email-search-backend
+source venv/bin/activate
 export FLASK_ENV=development
 export FLASK_DEBUG=True
 python src/main.py
+```
 
-# Frontend
+Frontend:
+```bash
 cd email-search-frontend
 npm run dev
 ```
+
+### Тестирование
+
+```bash
+# Backend тесты
+cd email-search-backend
+python -m pytest tests/
+
+# Frontend тесты
+cd email-search-frontend
+npm test
+```
+
+## 📈 Мониторинг
+
+### Логи
+
+Логи сохраняются в:
+- `data/logs/app.log` - Основные логи приложения
+- `data/logs/requests.log` - Логи HTTP запросов
+- `data/logs/errors.log` - Логи ошибок
+
+### Метрики
+
+Доступны через API:
+- `/api/monitoring/stats/summary` - Общая статистика
+- `/api/monitoring/system/resources` - Системные ресурсы
 
 ## 🛠️ Устранение неполадок
 
 ### Частые проблемы
 
-1. **Порт занят:**
+1. **Ошибка подключения к базе данных**
    ```bash
-   lsof -ti:5000 | xargs kill -9
-   ```
-
-2. **Ошибки базы данных:**
-   ```bash
+   # Проверьте права доступа к папке data/
    chmod 755 data/
    ```
 
-3. **Проблемы с зависимостями:**
+2. **Ошибки импорта модулей**
    ```bash
+   # Убедитесь, что виртуальное окружение активировано
+   source venv/bin/activate
    pip install -r requirements.txt
    ```
 
-### Логи
+3. **Frontend не загружается**
+   ```bash
+   # Пересоберите frontend
+   cd email-search-frontend
+   npm run build
+   cp -r dist/* ../email-search-backend/src/static/
+   ```
+
+### Логи отладки
+
 ```bash
-# Логи приложения
-tail -f data/logs/app.log
-
-# Логи запросов
-tail -f data/logs/requests.log
-```
-
-## 📈 Производительность
-
-### Рекомендуемые системные требования
-
-| Нагрузка | CPU | RAM | Диск | Сеть |
-|----------|-----|-----|------|------|
-| Малая (< 1000 req/day) | 1 vCPU | 1GB | 10GB | 100Mbps |
-| Средняя (< 10k req/day) | 2 vCPU | 2GB | 20GB | 1Gbps |
-| Высокая (< 100k req/day) | 4 vCPU | 4GB | 50GB | 1Gbps |
-
-### Оптимизация
-- Включите кэширование результатов
-- Настройте rate limiting
-- Используйте nginx для статических файлов
-- Мониторьте использование ресурсов
-
-## 🔒 Безопасность
-
-### Рекомендации
-- Измените JWT_SECRET_KEY в production
-- Используйте HTTPS в production
-- Настройте файрвол
-- Регулярно обновляйте зависимости
-- Мониторьте логи безопасности
-
-### Аудит безопасности
-```bash
-# Проверка зависимостей
-pip audit
-
-# Проверка конфигурации
-python -c "from src.services.auth_service import AuthService; print('Security check passed')"
+# Включение подробного логирования
+export FLASK_DEBUG=True
+export LOG_LEVEL=DEBUG
+python src/main.py
 ```
 
 ## 📞 Поддержка
 
-- **Email:** support@email-search-service.com
 - **Документация:** См. папку `docs/`
 - **Issues:** Создавайте issue в репозитории
+- **Email:** support@email-search-service.com
 
 ## 📄 Лицензия
 
 MIT License - см. файл LICENSE
 
+## 🤝 Вклад в проект
+
+1. Fork репозитория
+2. Создайте feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit изменения (`git commit -m 'Add amazing feature'`)
+4. Push в branch (`git push origin feature/amazing-feature`)
+5. Создайте Pull Request
+
+## 📋 Changelog
+
+### v2.0.0 (2025-06-30)
+- ✅ Интеграция с Google и Bing Search API
+- ✅ Система кэширования в SQLite
+- ✅ Rate limiting с многоуровневыми ограничениями
+- ✅ JWT и API ключи аутентификация
+- ✅ Полное логирование и мониторинг
+- ✅ Обновленный React интерфейс
+- ✅ Production-ready архитектура
+
+### v1.0.0 (2025-06-29)
+- ✅ Базовый поиск по email
+- ✅ Простой веб-интерфейс
+- ✅ Mock данные
+
 ---
 
-## 🎯 Что дальше?
-
-1. **Настройте конфигурацию** в `.env` файле
-2. **Запустите сервис** с помощью Docker или вручную
-3. **Протестируйте API** с помощью curl или веб-интерфейса
-4. **Настройте мониторинг** для production
-5. **Изучите документацию** для расширенных возможностей
-
-**Email Search Service v2.0** готов к использованию! 🚀
-
+**Email Intelligence System** - Профессиональное решение для поиска информации по email адресам 🚀

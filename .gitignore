@@ -16,19 +16,26 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# Virtual environments
+# Virtual Environment
 venv/
 env/
 ENV/
 env.bak/
 venv.bak/
-email-search-backend/venv/
-email-search-frontend/node_modules/
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # IDE
 .vscode/
@@ -49,50 +56,101 @@ Thumbs.db
 # Logs
 *.log
 logs/
+app.log
+server.log
+server_enhanced.log
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
+cache_data.db
 
-# Cache
-.cache/
-.pytest_cache/
+# Test Files and Results
+test_*.py
+*_test.py
+test_results_*.json
+comprehensive_test_results_*.json
+*_analysis_results.json
+*_search_results.json
+raw_google_results_*.json
+search_results_*.json
+*.json
+diagnosis*.json
+improved_analysis_results.json
+latest_search_results.json
+enhanced_parser_test_results.json
+pdf_analysis_results.json
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Analysis and Debug Files
+*_analysis.md
+*_summary_report.md
+*_REPORT.md
+*_GUIDE.md
+*_ANALYSIS.md
+*_SUMMARY.md
+analyze_*.py
+debug_*.py
+diagnose_*.py
+diagnostic_*.py
+direct_*.py
+demo_*.py
+final_test_*.py
+manual_*.py
+show_*.py
+specialized_*.py
+comprehensive_test_*.py
+enhanced_analyzer_v2.py
+enhanced_pdf_analyzer.py
+advanced_name_extractor.py
+browser_scraper.py
+clear_rate_limits.py
+setup_nlp.py
 
-# Node.js (for frontend)
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Documentation files (keeping only essential ones)
+DAMIROV_SERVICE_TEST_REPORT.md
+ELIBRARY_INTEGRATION_SUMMARY.md
+EMAIL_CLEANUP_GUIDE.md
+ENHANCED_PARSING_ANALYSIS.md
+GOOGLE_API_SETUP.md
+IMPLEMENTATION_RECOMMENDATIONS.md
+KHUDINA_CASE_ANALYSIS.md
+NLP_IMPROVEMENTS_SUMMARY.md
+NLP_IMPROVEMENT_ANALYSIS.md
+NLP_TEST_REPORT.md
+PDF_ENHANCEMENT_IMPLEMENTATION_REPORT.md
+PDF_ENHANCEMENT_REPORT.md
+PDF_PROCESSING_ANALYSIS.md
+PRIORITY_HTML_ANALYSIS_REPORT.md
+PROJECT_ANALYSIS_REPORT.md
+README_PDF_ANALYSIS.md
+RESTART_REPORT.md
+SCIENTIFIC_API_GUIDE.md
+SIMPLIFIED_ANALYSIS_README.md
+UPDATE_REPORT.md
+WEBPAGE_ANALYZER_FIXES.md
+elibrary_search_analysis.md
+service_analysis_comparison.md
+testing_summary_report.md
 
-# Build outputs
-dist/
-build/
+# Text files
+*.txt
+pdf_text_*.txt
+
+# Allow essential project files
+!requirements.txt
 
 # Temporary files
 *.tmp
-*.temp
-.tmp/
-.temp/
+*.bak
+*.swp
+*.swo
 
-# Coverage reports
-htmlcov/
-.coverage
-.coverage.*
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
+# Data files (if they contain sensitive information)
+data/*.json
+data/*.csv
+data/*.txt
 
-# Models and data
-*.model
-*.pkl
-*.joblib
-models/
-data/temp/
+# Keep data directory structure but ignore contents
+data/*
+!data/.gitkeep
