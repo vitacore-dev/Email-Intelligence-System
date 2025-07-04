@@ -26,6 +26,11 @@ try:
 except ImportError:
     EnhancedParserVerifier = None
 
+try:
+    from .enhanced_orcid_service import EnhancedORCIDService
+except ImportError:
+    EnhancedORCIDService = None
+
 logger = logging.getLogger(__name__)
 
 class SearchEngineService:
@@ -56,6 +61,9 @@ class SearchEngineService:
         # Инициализируем enhanced parser verifier
         self.enhanced_verifier = EnhancedParserVerifier() if EnhancedParserVerifier else None
         
+        # Инициализируем enhanced ORCID service
+        self.enhanced_orcid_service = EnhancedORCIDService() if EnhancedORCIDService else None
+        
         logger.info(f"SearchEngineService инициализирован:")
         logger.info(f"  Google API: {'✓' if self.google_api_key else '✗'}")
         logger.info(f"  Bing API: {'✓' if self.bing_api_key else '✗'}")
@@ -63,6 +71,7 @@ class SearchEngineService:
         logger.info(f"  Webpage Analyzer: {'✓' if self.webpage_analyzer else '✗'}")
         logger.info(f"  Enhanced NLP Analyzer: {'✓' if self.enhanced_nlp_analyzer else '✗'}")
         logger.info(f"  Enhanced Parser Verifier: {'✓' if self.enhanced_verifier else '✗'}")
+        logger.info(f"  Enhanced ORCID Service: {'✓' if self.enhanced_orcid_service else '✗'}")
         
     def search_scopus(self, query: str) -> List[Dict]:
         """Поиск через Scopus API"""
@@ -260,7 +269,7 @@ class SearchEngineService:
         
         # Извлекаем научные идентификаторы из базовых результатов поиска
         logger.info("Извлекаем научные идентификаторы из результатов поиска")
-        basic_scientific_ids = self._extract_scientific_identifiers(results['search_results'])
+        basic_scientific_ids = self._extract_scientific_identifiers(results['search_results'], email)
         
         # Обновляем scientific_identifiers базовыми данными только если они не были найдены в веб-анализе
         if (basic_scientific_ids.get('orcid_id') != "Не найден" and 
@@ -659,8 +668,8 @@ class SearchEngineService:
             'specialization': specializations[0] if specializations else "Не определено"
         }
     
-    def _extract_scientific_identifiers(self, results: List[Dict]) -> Dict[str, Any]:
-        """Извлечение научных идентификаторов"""
+    def _extract_scientific_identifiers(self, results: List[Dict], email: str = None) -> Dict[str, Any]:
+        """Извлечение научных идентификаторов с улучшенным ранжированием ORCID"""
         logger.info("Извлекаем научные идентификаторы из результатов поиска")
         logger.info(f"Обрабатываем {len(results)} результатов поиска")
         
@@ -709,13 +718,88 @@ class SearchEngineService:
             for email in email_matches:
                 alternative_emails.add(email.lower())
         
-        # Конвертируем множества в списки и сортируем
-        orcid_list = sorted(list(orcid_ids))
+        # Конвертируем множества в списки
+        orcid_list = list(orcid_ids)
         spin_list = sorted(list(spin_codes))
         email_list = sorted(list(alternative_emails))[:5]  # Ограничиваем количество
         
+        # КРИТИЧЕСКОЕ УЛУЧШЕНИЕ: Используем Enhanced ORCID Service для комплексного поиска
+        best_orcid = "Не найден"
+        all_orcid_candidates = set(orcid_list)  # Начинаем с найденных в результатах поиска
+        
+        if self.enhanced_orcid_service:
+            logger.info(f"Найдено {len(orcid_list)} ORCID в результатах поиска: {orcid_list}")
+            logger.info("Используем Enhanced ORCID Service для комплексного поиска ORCID")
+            
+            try:
+                # Извлекаем имя владельца из результатов для целевого поиска
+                target_name = None
+                for result in results:
+                    text = f"{result.get('title', '')} {result.get('snippet', '')}"
+                    # Ищем русские ФИО
+                    russian_names = re.findall(r'([А-Я][а-я]+\s+[А-Я][а-я]+\s+[А-Я][а-я]+)', text)
+                    if russian_names:
+                        target_name = russian_names[0]
+                        break
+                    # Ищем английские имена
+                    english_names = re.findall(r'([A-Z][a-z]+\s+[A-Z][a-z]+)', text)
+                    if english_names:
+                        target_name = english_names[0]
+                        break
+                
+                logger.info(f"Целевое имя для поиска: {target_name or 'не определено'}")
+                
+                # Выполняем комплексный поиск ORCID через Enhanced ORCID Service
+                enhanced_researchers = self.enhanced_orcid_service.enhanced_search_by_email(
+                    email=email or "unknown@example.com",  # Используем фактический email если доступен
+                    target_name=target_name,
+                    context="academic"
+                )
+                
+                # Добавляем найденные ORCID к существующим кандидатам
+                for researcher in enhanced_researchers:
+                    orcid_id = researcher.get('orcid_id')
+                    if orcid_id:
+                        all_orcid_candidates.add(orcid_id)
+                        
+                logger.info(f"Enhanced ORCID Service нашел дополнительно {len(enhanced_researchers)} кандидатов")
+                logger.info(f"Общий пул кандидатов: {len(all_orcid_candidates)} ORCID")
+                
+                # Теперь ранжируем все найденные ORCID кандидаты
+                all_candidates_list = list(all_orcid_candidates)
+                if all_candidates_list:
+                    ranked_orcids = self.enhanced_orcid_service.rank_orcid_candidates(
+                        all_candidates_list, results, target_name=target_name
+                    )
+                    
+                    if ranked_orcids:
+                        best_orcid = ranked_orcids[0]['orcid_id']
+                        confidence = ranked_orcids[0]['confidence']
+                        confidence_level = ranked_orcids[0]['confidence_level']
+                        logger.info(f"✅ Enhanced ORCID Service выбрал лучший ORCID: {best_orcid}")
+                        logger.info(f"   Confidence: {confidence:.3f} ({confidence_level})")
+                        
+                        # Логируем топ-3 результата для анализа
+                        for idx, ranked in enumerate(ranked_orcids[:3]):
+                            status = "🏆" if idx == 0 else f"  {idx+1}."
+                            logger.info(f"{status} {ranked['orcid_id']} - confidence: {ranked['confidence']:.3f} ({ranked['confidence_level']})")
+                    else:
+                        logger.warning("Enhanced ORCID service не вернул ранжированных результатов")
+                        best_orcid = all_candidates_list[0] if all_candidates_list else "Не найден"
+                        
+            except Exception as e:
+                logger.error(f"Ошибка в Enhanced ORCID service: {str(e)}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                best_orcid = orcid_list[0] if orcid_list else "Не найден"
+        else:
+            # Fallback к простому выбору первого найденного ORCID
+            if orcid_list:
+                best_orcid = sorted(orcid_list)[0]
+                logger.info(f"Enhanced ORCID service недоступен, используем первый найденный: {best_orcid}")
+        
         return {
-            'orcid_id': orcid_list[0] if orcid_list else "Не найден",
+            'orcid_id': best_orcid,
             'spin_code': spin_list[0] if spin_list else "Не найден",
             'email_for_correspondence': "Не определен",
             'alternative_emails': email_list

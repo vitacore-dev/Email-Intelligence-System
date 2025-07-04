@@ -1,0 +1,109 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Documentation
+*.md
+docs/
+
+# Tests
+test_*.py
+*_test.py
+tests/
+test_results_*.json
+comprehensive_test_*.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+server.log
+app.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Development files
+.env.local
+.env.development
+nginx.conf
+ssl/
+
+# Cache and data files
+cache_data.db
+*.db-journal
+raw_google_results_*.json
+search_results_*.json
+pdf_text_*.txt
+pdf_analysis_results.json
+latest_search_results.json
+improved_analysis_results.json
+
+# Analysis and demo files
+*_diagnosis.json
+*_enhanced_analysis*.json
+demo_*.py
+diagnose_*.py
+debug_*.py
+analyze_*.py
+manual_*.py
+specialized_*.py
+clear_*.py
+show_*.py
+direct_*.py
+
+# Report files
+*_REPORT.md
+*_SUMMARY.md
+*_ANALYSIS.md
+*_GUIDE.md

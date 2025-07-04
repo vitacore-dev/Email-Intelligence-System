@@ -1,23 +1,51 @@
+version: '3.8'
+
 services:
   email-search-service:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: email-search-backend
     ports:
-      - "5001:5001"
+      - "5003:5003"
+      - "5001:5001"  # Backup port
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - email_cache:/app/data/cache
     environment:
       - FLASK_ENV=production
       - FLASK_DEBUG=False
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-super-secret-jwt-key}
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=5003
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-email-search-super-secret-key-2025}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID:-}
       - BING_API_KEY=${BING_API_KEY:-}
+      - SCOPUS_API_KEY=${SCOPUS_API_KEY:-}
+      - ORCID_CLIENT_ID=${ORCID_CLIENT_ID:-}
+      - ORCID_CLIENT_SECRET=${ORCID_CLIENT_SECRET:-}
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import requests; requests.get('http://localhost:5001/api/email/health')\""]
+      test: ["CMD", "curl", "-f", "http://localhost:5003/api/email/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+    networks:
+      - email-search-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.email-search.rule=Host(`localhost`)"
+      - "traefik.http.services.email-search.loadbalancer.server.port=5003"
+
+volumes:
+  email_cache:
+    driver: local
+
+networks:
+  email-search-network:
+    driver: bridge
 
