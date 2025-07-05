@@ -444,10 +444,19 @@
             cursor: pointer;
             transition: transform 0.2s;
             margin-top: 10px;
+            margin-right: 10px;
         }
 
         .saved-entry button:hover {
             transform: translateY(-1px);
+        }
+
+        .saved-entry .delete-btn {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        }
+
+        .saved-entry .delete-btn:hover {
+            background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
         }
 
         /* Адаптивность */
@@ -629,6 +638,9 @@
             // Получаем выбранный метод поиска
             const selectedMethod = document.querySelector('input[name="searchMethod"]:checked').value;
             
+            // Проверяем, был ли этот email уже найден ранее
+            const forceRefresh = await checkIfEmailSearchedBefore(email);
+            
             const endpoint = '/api/email/search';
             const loadingText = '⏳ Анализируем...';
             const originalText = '🔍 Анализ';
@@ -649,7 +661,8 @@
                     },
                     body: JSON.stringify({ 
                         email: email,
-                        search_method: selectedMethod
+                        search_method: selectedMethod,
+                        force_refresh: forceRefresh
                     })
                 });
 
@@ -670,6 +683,19 @@
                 searchBtn.disabled = false;
                 searchBtn.innerHTML = originalText;
             }
+        }
+
+        async function checkIfEmailSearchedBefore(email) {
+            try {
+                const response = await fetch('/api/email/history?page=1&limit=100');
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.results.some(entry => entry.email === email);
+                }
+            } catch (error) {
+                console.error('Ошибка проверки истории:', error);
+            }
+            return false;
         }
 
         function showLoading() {
@@ -737,7 +763,10 @@
                     <p>Последнее обновление: ${new Date(entry.updated_at).toLocaleString()}</p>
                     <p>Количество обращений: ${entry.hit_count}</p>
                     <p>Метод поиска: ${entry.search_method}</p>
-                    <button onclick="viewSavedData(${index})">Посмотреть данные</button>
+                    <div>
+                        <button onclick="viewSavedData(${index})">Посмотреть данные</button>
+                        <button class="delete-btn" onclick="deleteSavedData('${entry.email}', ${index})">🗑️ Удалить</button>
+                    </div>
                 </div>
             `).join('');
             
@@ -754,6 +783,36 @@
                 showTab('basic');
             } else {
                 alert('Ошибка загрузки данных');
+            }
+        }
+
+        async function deleteSavedData(email, index) {
+            if (!confirm(`Вы уверены, что хотите удалить все данные для email: ${email}?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/cache/email-data/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                alert(`Данные для email ${email} успешно удалены`);
+                
+                // Обновляем список сохраненных данных
+                loadSavedData();
+                
+            } catch (error) {
+                console.error('Ошибка при удалении данных:', error);
+                alert('Ошибка при удалении данных: ' + error.message);
             }
         }
 
@@ -951,41 +1010,291 @@
                 return;
             }
 
-            const html = publications.map(pub => `
-                <div class="publication-item">
-                    <div class="publication-title">${pub.title || 'Без названия'}</div>
-                    <div class="publication-details">
-                        <p><strong>Авторы:</strong> ${pub.authors || 'Не указаны'}</p>
-                        <p><strong>Журнал:</strong> ${pub.journal || 'Не указан'}</p>
-                        <p><strong>Год:</strong> ${pub.year || 'Не указан'}</p>
-                        <p><strong>DOI:</strong> ${pub.doi || 'Не найден'}</p>
-                        ${pub.url ? `<p><strong>URL:</strong> <a href="${pub.url}" target="_blank">${pub.url}</a></p>` : ''}
+            // Статистика анализа
+            const analysisStats = analyzePublicationsStats(publications);
+            
+            let html = `
+                <div class="publications-overview" style="
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 10px;
+                    margin-bottom: 20px;
+                    border-left: 4px solid #667eea;
+                ">
+                    <h3 style="margin: 0 0 15px 0; color: #333;">📊 Обзор публикаций</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 2rem; font-weight: bold; color: #667eea; margin-bottom: 5px;">${publications.length}</div>
+                            <div style="font-size: 0.9rem; color: #666;">Всего публикаций</div>
+                        </div>
+                        <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 2rem; font-weight: bold; color: #28a745; margin-bottom: 5px;">${analysisStats.withPhase42}</div>
+                            <div style="font-size: 0.9rem; color: #666;">Проанализировано Phase 4.2</div>
+                        </div>
+                        <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 2rem; font-weight: bold; color: #ffc107; margin-bottom: 5px;">${analysisStats.uniqueJournals}</div>
+                            <div style="font-size: 0.9rem; color: #666;">Различных журналов</div>
+                        </div>
+                        <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 2rem; font-weight: bold; color: #17a2b8; margin-bottom: 5px;">${analysisStats.recentPublications}</div>
+                            <div style="font-size: 0.9rem; color: #666;">Публикации 2023-2025</div>
+                        </div>
                     </div>
+                    ${analysisStats.researchFields.length > 0 ? `
+                        <div style="margin-top: 15px;">
+                            <h4 style="margin: 0 0 10px 0; color: #333;">🎯 Области исследований:</h4>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                ${analysisStats.researchFields.map(field => `<span style="background: #667eea; color: white; padding: 4px 12px; border-radius: 15px; font-size: 0.8rem;">${field}</span>`).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
                 </div>
-            `).join('');
+            `;
+
+            // Группируем публикации по годам
+            const publicationsByYear = groupPublicationsByYear(publications);
+            
+            // Отображаем публикации по годам
+            Object.keys(publicationsByYear).sort((a, b) => b - a).forEach(year => {
+                html += `<h4 style="margin: 20px 0 15px 0; color: #333;">📅 ${year} год (${publicationsByYear[year].length} публикаций)</h4>`;
+                
+                publicationsByYear[year].forEach(pub => {
+                    html += createPublicationCard(pub);
+                });
+            });
 
             document.getElementById('publicationsContent').innerHTML = html;
+        }
+        
+        function createPublicationCard(pub) {
+            const metadata = pub.metadata || {};
+            const originalData = pub.original_data || {};
+            const authorRole = pub.author_role || {};
+            const thematic = pub.thematic_classification || {};
+            
+            // Извлекаем данные из нового формата
+            const title = metadata.title || originalData.title || 'Без названия';
+            const journal = metadata.journal || originalData.journal || 'Не указан';
+            const year = metadata.publication_date || originalData.year || 'Не указан';
+            const doi = metadata.doi || 'Не найден';
+            const authors = metadata.authors ? 
+                (Array.isArray(metadata.authors) ? metadata.authors.join(', ') : metadata.authors) : 
+                'Не указаны';
+            const pmid = metadata.pmid || 'Не найден';
+            const language = metadata.language || 'Не определен';
+            
+            return `
+                <div class="publication-item" style="
+                    background: #f8f9fa;
+                    border-radius: 10px;
+                    padding: 20px;
+                    margin-bottom: 20px;
+                    border-left: 4px solid #28a745;
+                ">
+                    <div class="publication-title" style="
+                        font-size: 1.2rem;
+                        font-weight: bold;
+                        color: #333;
+                        margin-bottom: 15px;
+                        line-height: 1.4;
+                    ">${title}</div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                        <div style="background: white; padding: 15px; border-radius: 8px;">
+                            <h4 style="margin: 0 0 10px 0; color: #667eea; font-size: 1rem;">📄 Основные данные</h4>
+                            <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Журнал:</strong> ${journal}</div>
+                            <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Год:</strong> ${year}</div>
+                            <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>DOI:</strong> ${doi}</div>
+                            <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>PMID:</strong> ${pmid}</div>
+                            <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Язык:</strong> ${language}</div>
+                        </div>
+                        
+                        ${Object.keys(authorRole).length > 0 ? `
+                            <div style="background: white; padding: 15px; border-radius: 8px;">
+                                <h4 style="margin: 0 0 10px 0; color: #667eea; font-size: 1rem;">👤 Роль автора</h4>
+                                <div style="margin-bottom: 8px;">
+                                    <span style="background: #28a745; color: white; padding: 4px 12px; border-radius: 15px; font-size: 0.8rem;">
+                                        ${authorRole.author_contribution || 'Соавтор'}
+                                    </span>
+                                </div>
+                                <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Первый автор:</strong> ${authorRole.is_first_author ? 'Да' : 'Нет'}</div>
+                                <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Корреспондирующий:</strong> ${authorRole.is_corresponding_author ? 'Да' : 'Нет'}</div>
+                                <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Всего авторов:</strong> ${authorRole.total_authors || 'Не определено'}</div>
+                            </div>
+                        ` : ''}
+                        
+                        ${Object.keys(thematic).length > 0 ? `
+                            <div style="background: white; padding: 15px; border-radius: 8px;">
+                                <h4 style="margin: 0 0 10px 0; color: #667eea; font-size: 1rem;">🔬 Тематическая классификация</h4>
+                                <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Область:</strong> ${thematic.research_field || 'Не определена'}</div>
+                                ${thematic.sub_fields && thematic.sub_fields.length > 0 ? `
+                                    <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Подобласти:</strong> ${thematic.sub_fields.join(', ')}</div>
+                                ` : ''}
+                                ${thematic.medical_specialties && thematic.medical_specialties.length > 0 ? `
+                                    <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Мед. специальности:</strong> ${thematic.medical_specialties.join(', ')}</div>
+                                ` : ''}
+                                <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Клиническая значимость:</strong> ${thematic.clinical_relevance || 'Не оценена'}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div style="margin-bottom: 8px; font-size: 0.9rem;"><strong>Авторы:</strong> ${authors}</div>
+                    
+                    ${pub.analysis_timestamp ? `
+                        <div style="margin-top: 15px; color: #666; font-size: 0.8rem; border-top: 1px solid #dee2e6; padding-top: 10px;">
+                            ⏰ Анализ Phase 4.2 выполнен: ${new Date(pub.analysis_timestamp * 1000).toLocaleString('ru-RU')}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        function analyzePublicationsStats(publications) {
+            const journals = new Set();
+            const fields = new Set();
+            let withPhase42 = 0;
+            let recentCount = 0;
+            
+            publications.forEach(pub => {
+                // Журналы
+                const journal = pub.metadata?.journal || pub.original_data?.journal;
+                if (journal) journals.add(journal);
+                
+                // Phase 4.2 анализ
+                if (pub.analysis_timestamp) withPhase42++;
+                
+                // Недавние публикации
+                const year = parseInt(pub.metadata?.publication_date || pub.original_data?.year);
+                if (year >= 2023) recentCount++;
+                
+                // Области исследований
+                const thematic = pub.thematic_classification || {};
+                if (thematic.research_field) fields.add(thematic.research_field);
+                if (thematic.sub_fields) {
+                    thematic.sub_fields.forEach(field => fields.add(field));
+                }
+                if (thematic.medical_specialties) {
+                    thematic.medical_specialties.forEach(spec => fields.add(spec));
+                }
+            });
+            
+            return {
+                withPhase42,
+                uniqueJournals: journals.size,
+                recentPublications: recentCount,
+                researchFields: Array.from(fields).filter(field => field && field !== 'Не определена')
+            };
+        }
+        
+        function groupPublicationsByYear(publications) {
+            const groups = {};
+            
+            publications.forEach(pub => {
+                const year = pub.metadata?.publication_date || pub.original_data?.year || 'Неизвестно';
+                if (!groups[year]) groups[year] = [];
+                groups[year].push(pub);
+            });
+            
+            return groups;
         }
 
         function displayTimeline(data) {
             const publications = data.publications || [];
             const searchMetadata = data.search_metadata || {};
             const basicInfo = data.basic_info || {};
+            const professionalInfo = data.professional_info || {};
+            const scientificIds = data.scientific_identifiers || {};
+            const webpageAnalysis = data.webpage_analysis || {};
             
             let timelineEvents = [];
             
-            // Добавляем публикации в timeline
+            // Добавляем публикации в timeline с улучшенным извлечением года
             publications.forEach(pub => {
-                if (pub.year) {
+                let year = pub.metadata?.publication_date || pub.original_data?.year;
+                
+                // Пытаемся извлечь год из заголовка или аннотации
+                if (!year) {
+                    const text = (pub.title || '') + ' ' + (pub.abstract || '');
+                    const yearMatch = text.match(/\b(20[0-2][0-9])\b|\b(19[8-9][0-9])\b/);
+                    if (yearMatch) {
+                        year = yearMatch[1] || yearMatch[2];
+                    }
+                }
+                
+                // Пытаемся извлечь год из URL
+                if (!year && pub.url) {
+                    const urlYearMatch = pub.url.match(/\/(20[0-2][0-9])\//); 
+                    if (urlYearMatch) {
+                        year = urlYearMatch[1];
+                    }
+                }
+                
+                // Если есть analysis_timestamp, используем его как fallback
+                if (!year && pub.analysis_timestamp) {
+                    year = new Date(pub.analysis_timestamp * 1000).getFullYear();
+                }
+                
+                if (year) {
+                    const title = pub.metadata?.title || pub.original_data?.title || 'Публикация без названия';
+                    const journal = pub.metadata?.journal || pub.original_data?.journal || 'Не указан';
+                    const authors = pub.metadata?.authors ? 
+                        (Array.isArray(pub.metadata.authors) ? pub.metadata.authors.join(', ') : pub.metadata.authors) : 
+                        'Авторы не указаны';
+                    const type = pub.type || 'article';
+                    
                     timelineEvents.push({
-                        year: parseInt(pub.year),
+                        year: parseInt(year),
                         type: 'publication',
-                        title: pub.title || 'Публикация без названия',
-                        description: `Журнал: ${pub.journal || 'Не указан'}`,
-                        authors: pub.authors || 'Авторы не указаны'
+                        subtype: type,
+                        title: title,
+                        description: `Журнал: ${journal}`,
+                        authors: authors,
+                        url: pub.url
                     });
                 }
             });
+            
+            // Добавляем карьерные события из профессиональной информации
+            if (professionalInfo.workplace && professionalInfo.workplace !== 'Не определено') {
+                // Пытаемся извлечь год из текста рабочего места
+                const workplaceYear = extractYearFromText(professionalInfo.workplace);
+                if (workplaceYear) {
+                    timelineEvents.push({
+                        year: parseInt(workplaceYear),
+                        type: 'career',
+                        title: 'Карьерная веха',
+                        description: `Работа: ${professionalInfo.workplace}`,
+                        subinfo: professionalInfo.position || 'Позиция не указана'
+                    });
+                }
+            }
+            
+            // Добавляем образовательные события
+            if (professionalInfo.degrees && professionalInfo.degrees.length > 0) {
+                professionalInfo.degrees.forEach(degree => {
+                    const degreeYear = extractYearFromText(degree);
+                    if (degreeYear) {
+                        timelineEvents.push({
+                            year: parseInt(degreeYear),
+                            type: 'education',
+                            title: 'Получение степени',
+                            description: `Степень: ${degree}`,
+                            subinfo: professionalInfo.workplace || 'Учреждение не указано'
+                        });
+                    }
+                });
+            }
+            
+            // Добавляем события из анализа веб-страниц
+            if (webpageAnalysis.analysis_metadata?.analysis_timestamp) {
+                timelineEvents.push({
+                    year: new Date(webpageAnalysis.analysis_metadata.analysis_timestamp * 1000).getFullYear(),
+                    type: 'analysis',
+                    title: 'Анализ веб-страниц',
+                    description: `Проанализировано ${webpageAnalysis.analysis_metadata.successful_extractions || 0} страниц`,
+                    subinfo: `Извлечено данных: ${webpageAnalysis.analysis_metadata.analyzed_urls?.length || 0} URL`
+                });
+            }
             
             // Добавляем текущий поиск
             if (searchMetadata.timestamp) {
@@ -993,61 +1302,179 @@
                     year: new Date(searchMetadata.timestamp * 1000).getFullYear(),
                     type: 'search',
                     title: 'Анализ данных',
-                    description: `Найдено ${searchMetadata.results_count || 0} результатов`
+                    description: `Найдено ${searchMetadata.results_count || 0} результатов`,
+                    subinfo: `Метод: ${getSearchMethodText(searchMetadata.search_method)}`
                 });
             }
             
-            // Сортируем по годам
-            timelineEvents.sort((a, b) => b.year - a.year);
+            // Группируем события по годам и типам
+            const groupedEvents = groupTimelineEvents(timelineEvents);
+            
+            // Сортируем по годам (новые сначала)
+            const sortedYears = Object.keys(groupedEvents).sort((a, b) => parseInt(b) - parseInt(a));
             
             if (timelineEvents.length === 0) {
                 document.getElementById('timelineContent').innerHTML = `
                     <div class="error-message">
                         Недостаточно данных для построения временной шкалы.
-                        Добавьте информацию о публикациях или деятельности.
+                        Публикации найдены, но в них отсутствуют временные метки.
                     </div>
                 `;
                 return;
             }
             
-            const html = `
+            // Создаем статистику временной шкалы
+            const stats = calculateTimelineStats(timelineEvents);
+            
+            let html = `
                 <h3>⏰ Временная шкала активности</h3>
-                <div class="timeline-container" style="margin-top: 20px;">
-                    ${timelineEvents.map(event => `
-                        <div class="timeline-item" style="
-                            background: #f8f9fa;
-                            padding: 20px;
-                            border-radius: 10px;
-                            margin-bottom: 15px;
-                            border-left: 4px solid ${event.type === 'publication' ? '#667eea' : '#4caf50'};
-                        ">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                <div style="flex: 1;">
-                                    <h4 style="margin: 0 0 8px 0; color: #333;">
-                                        ${event.type === 'publication' ? '📚' : '🔍'} ${event.title}
-                                    </h4>
-                                    <p style="margin: 0 0 5px 0; color: #666; font-size: 14px;">${event.description}</p>
-                                    ${event.authors ? `<p style="margin: 0; color: #888; font-size: 12px;">Авторы: ${event.authors}</p>` : ''}
-                                </div>
-                                <div style="
-                                    background: ${event.type === 'publication' ? '#667eea' : '#4caf50'};
-                                    color: white;
-                                    padding: 8px 12px;
-                                    border-radius: 20px;
-                                    font-weight: 600;
-                                    font-size: 14px;
-                                    min-width: 60px;
-                                    text-align: center;
-                                ">
-                                    ${event.year}
-                                </div>
-                            </div>
+                <div class="timeline-stats" style="
+                    background: #f8f9fa;
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                    border-left: 4px solid #667eea;
+                ">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #667eea;">${stats.totalEvents}</div>
+                            <div style="font-size: 0.9rem; color: #666;">Всего событий</div>
                         </div>
-                    `).join('')}
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #28a745;">${stats.publicationsCount}</div>
+                            <div style="font-size: 0.9rem; color: #666;">Публикаций</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #ffc107;">${stats.yearsSpan}</div>
+                            <div style="font-size: 0.9rem; color: #666;">Лет активности</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #17a2b8;">${stats.recentActivity}</div>
+                            <div style="font-size: 0.9rem; color: #666;">Недавних событий</div>
+                        </div>
+                    </div>
                 </div>
+                <div class="timeline-container" style="margin-top: 20px;">
             `;
             
+            // Отображаем события по годам
+            sortedYears.forEach(year => {
+                const yearEvents = groupedEvents[year];
+                html += `
+                    <div class="timeline-year" style="margin-bottom: 30px;">
+                        <h4 style="
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            padding: 10px 20px;
+                            border-radius: 25px;
+                            margin: 0 0 15px 0;
+                            text-align: center;
+                            font-size: 1.1rem;
+                        ">
+                            📅 ${year} год (${yearEvents.length} событий)
+                        </h4>
+                `;
+                
+                yearEvents.forEach(event => {
+                    html += createTimelineEventCard(event);
+                });
+                
+                html += `</div>`;
+            });
+            
+            html += `</div>`;
+            
             document.getElementById('timelineContent').innerHTML = html;
+        }
+        
+        function extractYearFromText(text) {
+            if (!text) return null;
+            const yearMatch = text.match(/\b(20[0-2][0-9])\b|\b(19[8-9][0-9])\b/);
+            return yearMatch ? (yearMatch[1] || yearMatch[2]) : null;
+        }
+        
+        function groupTimelineEvents(events) {
+            const grouped = {};
+            events.forEach(event => {
+                const year = event.year.toString();
+                if (!grouped[year]) {
+                    grouped[year] = [];
+                }
+                grouped[year].push(event);
+            });
+            
+            // Сортируем события внутри каждого года по типу
+            Object.keys(grouped).forEach(year => {
+                grouped[year].sort((a, b) => {
+                    const typeOrder = { 'education': 0, 'career': 1, 'publication': 2, 'analysis': 3, 'search': 4 };
+                    return (typeOrder[a.type] || 5) - (typeOrder[b.type] || 5);
+                });
+            });
+            
+            return grouped;
+        }
+        
+        function calculateTimelineStats(events) {
+            const years = events.map(e => e.year).filter(y => y);
+            const currentYear = new Date().getFullYear();
+            
+            return {
+                totalEvents: events.length,
+                publicationsCount: events.filter(e => e.type === 'publication').length,
+                yearsSpan: years.length > 0 ? Math.max(...years) - Math.min(...years) + 1 : 0,
+                recentActivity: events.filter(e => e.year >= currentYear - 2).length
+            };
+        }
+        
+        function createTimelineEventCard(event) {
+            const typeConfig = {
+                'publication': { icon: '📚', color: '#667eea', bgColor: '#e3f2fd' },
+                'education': { icon: '🎓', color: '#4caf50', bgColor: '#e8f5e8' },
+                'career': { icon: '💼', color: '#ff9800', bgColor: '#fff3e0' },
+                'analysis': { icon: '🔍', color: '#9c27b0', bgColor: '#f3e5f5' },
+                'search': { icon: '🔎', color: '#607d8b', bgColor: '#eceff1' }
+            };
+            
+            const config = typeConfig[event.type] || typeConfig['search'];
+            
+            return `
+                <div class="timeline-item" style="
+                    background: ${config.bgColor};
+                    padding: 20px;
+                    border-radius: 10px;
+                    margin-bottom: 15px;
+                    border-left: 4px solid ${config.color};
+                    transition: transform 0.2s, box-shadow 0.2s;
+                " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 15px rgba(0,0,0,0.1)'" 
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="flex: 1;">
+                            <h4 style="margin: 0 0 8px 0; color: ${config.color}; display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1.2rem;">${config.icon}</span>
+                                ${event.title}
+                                ${event.subtype ? `<span style="background: ${config.color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; text-transform: uppercase;">${event.subtype}</span>` : ''}
+                            </h4>
+                            <p style="margin: 0 0 5px 0; color: #666; font-size: 14px;">${event.description}</p>
+                            ${event.authors ? `<p style="margin: 0 0 5px 0; color: #888; font-size: 12px;"><strong>Авторы:</strong> ${event.authors}</p>` : ''}
+                            ${event.subinfo ? `<p style="margin: 0; color: #999; font-size: 12px;"><strong>Дополнительно:</strong> ${event.subinfo}</p>` : ''}
+                            ${event.url ? `<a href="${event.url}" target="_blank" style="color: ${config.color}; text-decoration: none; font-size: 12px;">🔗 Перейти к источнику</a>` : ''}
+                        </div>
+                        <div style="
+                            background: ${config.color};
+                            color: white;
+                            padding: 8px 12px;
+                            border-radius: 20px;
+                            font-weight: 600;
+                            font-size: 14px;
+                            min-width: 60px;
+                            text-align: center;
+                            margin-left: 15px;
+                        ">
+                            ${event.year}
+                        </div>
+                    </div>
+                </div>
+            `;
         }
         
         function displayNetworks(data) {

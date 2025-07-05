@@ -1027,15 +1027,24 @@ class WebpageAnalyzer:
             analyzed_data['owner_identification']['name_variations'] = variations
     
     def _filter_names_by_quality(self, names: List[str]) -> List[str]:
-        """Фильтрует имена по качеству, исключая нечеловеческие названия"""
+        """Фильтрует имена по качеству, исключая нечеловеческие названия и технические префиксы"""
         filtered_names = []
         
+        technical_prefixes = [
+            'антиплагиат', 'antiplagiat', 'система', 'сервис', 'платформа', 
+            'программа', 'software', 'system', 'service'
+        ]
+
         for name in names:
             if not name or not isinstance(name, str):
                 continue
             
             # Базовая очистка
             clean_name = re.sub(r'\s+', ' ', name.strip())
+            
+            # Исключаем имена с техническими префиксами
+            if any(clean_name.lower().startswith(prefix) for prefix in technical_prefixes):
+                continue
             
             # Проверяем длину
             if len(clean_name) < 3 or len(clean_name) > 100:
@@ -1093,6 +1102,345 @@ class WebpageAnalyzer:
                 filtered_names.append(clean_name)
         
         return filtered_names
+ 
+    def _extract_human_name_from_technical(self, technical_name: str) -> Optional[str]:
+        """Извлекает человеческое имя из технического названия"""
+        # Список технических префиксов для удаления
+        technical_prefixes = [
+            'антиплагиат', 'antiplagiat', 'система', 'сервис', 'платформа',
+            'программа', 'software', 'system', 'service', 'tool', 'инструмент',
+            'приложение', 'application', 'модуль', 'module', 'компонент',
+            'решение', 'solution', 'технология', 'technology', 'методика',
+            'procedure', 'процедура', 'алгоритм', 'algorithm', 'framework',
+            'библиотека', 'library', 'пакет', 'package', 'комплекс', 'complex',
+            'проект', 'project', 'разработка', 'development', 'версия', 'version'
+        ]
+        
+        name_lower = technical_name.lower()
+        
+        # Ищем и удаляем технический префикс
+        for prefix in technical_prefixes:
+            patterns = [
+                f'^{prefix}\s+',      # "антиплагиат "
+                f'^{prefix}-',        # "антиплагиат-"
+                f'^{prefix}:',        # "антиплагиат:"
+                f'^{prefix}\.',       # "антиплагиат."
+            ]
+            
+            for pattern in patterns:
+                if re.match(pattern, name_lower):
+                    # Удаляем префикс и очищаем
+                    remaining = re.sub(pattern, '', technical_name, flags=re.IGNORECASE).strip()
+                    if remaining:
+                        return remaining
+        
+        return None
+    
+    def _contains_technical_components(self, name: str) -> bool:
+        """Проверяет, содержит ли имя технические компоненты"""
+        name_lower = name.lower()
+        
+        # Технические слова, которые не должны быть в человеческих именах
+        technical_words = [
+            'api', 'bot', 'система', 'system', 'сервис', 'service',
+            'платформа', 'platform', 'версия', 'version', 'релиз', 'release',
+            'update', 'обновление', 'patch', 'патч', 'fix', 'исправление',
+            'bug', 'баг', 'error', 'ошибка', 'log', 'лог', 'debug',
+            'тест', 'test', 'demo', 'демо', 'beta', 'бета', 'alpha',
+            'config', 'конфигурация', 'setup', 'настройка', 'install',
+            'установка', 'download', 'скачать', 'upload', 'загрузить'
+        ]
+        
+        # Проверяем наличие технических слов
+        words = name_lower.split()
+        for word in words:
+            if word in technical_words:
+                return True
+        
+        # Проверяем технические паттерны
+        technical_patterns = [
+            r'v\d+\.\d+',           # версии типа v1.0
+            r'\d+\.\d+\.\d+',       # версии типа 1.2.3
+            r'build\s*\d+',         # build номера
+            r'\w+\.exe',            # исполняемые файлы
+            r'\w+\.dll',            # библиотеки
+            r'\w+\.jar',            # Java архивы
+            r'\w+@\w+',             # email-подобные структуры
+        ]
+        
+        for pattern in technical_patterns:
+            if re.search(pattern, name_lower):
+                return True
+        
+        return False 
+ 
+    def _calculate_email_match_score(self, name: str, target_email: str) -> float:
+        """Вычисляет соответствие имени с email адресом"""
+        if not target_email or not name:
+            return 0.0
+        
+        # НОВОЕ: Очищаем имя от технических префиксов для корректного сопоставления
+        clean_name = self._clean_name_for_email_matching(name)
+        if not clean_name:
+            return 0.0
+        
+        # Извлекаем локальную часть email
+        email_local = target_email.split('@')[0].lower() if '@' in target_email else target_email.lower()
+        name_lower = clean_name.lower()
+        
+        score = 0.0
+        
+        # Проверяем прямое совпадение полного имени
+        if name_lower in email_local or email_local in name_lower:
+            score += 0.4
+        
+        # Проверяем совпадение частей имени (только реальные части имени)
+        name_parts = self._extract_real_name_parts(clean_name)
+        matched_parts = 0
+        
+        for part in name_parts:
+            if part in email_local:
+                matched_parts += 1
+                score += 0.3
+            elif self._fuzzy_match(part, email_local) > 0.8:
+                matched_parts += 1
+                score += 0.2
+        
+        # Бонус за множественные совпадения
+        if matched_parts >= 2:
+            score += 0.2
+        
+        # Проверяем транслитерацию для русских имен
+        if re.search(r'[А-Яа-я]', clean_name):
+            transliterated = self._simple_transliterate(clean_name).lower()
+            if transliterated != name_lower:
+                if transliterated in email_local or email_local in transliterated:
+                    score += 0.3
+                
+                # Проверяем части транслитерированного имени
+                trans_parts = [part for part in transliterated.split() if len(part) > 2]
+                for part in trans_parts:
+                    if part in email_local:
+                        score += 0.2
+        
+        # Проверяем инициалы (только от реальных частей имени)
+        real_name_parts = [part for part in clean_name.split() if len(part) > 0 and part[0].isupper()]
+        initials = ''.join([part[0].lower() for part in real_name_parts])
+        if len(initials) >= 2 and initials in email_local:
+            score += 0.1
+        
+        return min(score, 1.0)
+    
+    def _clean_name_for_email_matching(self, name: str) -> str:
+        """Очищает имя от технических префиксов для корректного сопоставления с email"""
+        if not name:
+            return ''
+        
+        # Попытка извлечь человеческое имя из технического
+        clean_name = self._extract_human_name_from_technical(name)
+        if clean_name:
+            return clean_name
+        
+        # Если извлечь не удалось, используем оригинальное имя
+        return name
+    
+    def _extract_real_name_parts(self, name: str) -> List[str]:
+        """Извлекает только реальные части имени, исключая технические термины"""
+        if not name:
+            return []
+        
+        parts = name.split()
+        real_parts = []
+        
+        # Технические слова, которые не являются частью имени
+        technical_words = [
+            'антиплагиат', 'antiplagiat', 'система', 'сервис', 'платформа',
+            'программа', 'software', 'system', 'service', 'api', 'bot',
+            'версия', 'version', 'demo', 'test', 'beta', 'alpha'
+        ]
+        
+        for part in parts:
+            part_lower = part.lower()
+            
+            # Пропускаем технические слова
+            if part_lower in technical_words:
+                continue
+            
+            # Пропускаем слишком короткие части (кроме инициалов)
+            if len(part) < 2 and not (len(part) == 2 and part.endswith('.')):
+                continue
+            
+            # Пропускаем части, состоящие только из цифр
+            if part.isdigit():
+                continue
+            
+            # Оставляем только части, похожие на имена
+            if part[0].isupper() and (part[1:].islower() or part.endswith('.')):
+                real_parts.append(part_lower)
+        
+        return real_parts 
+ 
+    def _is_human_name(self, name: str) -> bool:
+        """Проверяет, является ли строка человеческим именем"""
+        name_parts = name.split()
+        
+        # Должно быть от 2 до 4 частей
+        if len(name_parts) < 2 or len(name_parts) > 4:
+            return False
+        
+        # НОВОЕ: Дополнительная проверка на технические термины
+        if self._contains_technical_components(name):
+            return False
+        
+        # Каждая часть должна начинаться с заглавной буквы
+        for part in name_parts:
+            if not part[0].isupper():
+                return False
+            
+            # Проверяем, что остальная часть состоит из букв
+            if not all(c.isalpha() or c == '.' for c in part[1:]):
+                return False
+        
+        # НОВОЕ: Проверяем, что все части - это реальные слова (не аббревиатуры)
+        for part in name_parts:
+            # Пропускаем инициалы (одна буква + точка)
+            if len(part) == 2 and part.endswith('.'):
+                continue
+            # Для полных слов проверяем минимальную длину
+            if len(part) < 2:
+                return False
+            # Проверяем, что это не техническая аббревиатура
+            if part.isupper() and len(part) > 2:
+                return False
+        
+        # Проверяем паттерны для русских имен
+        if re.search(r'[А-Яа-я]', name):
+            russian_patterns = [
+                r'^[А-Я][а-я]+ [А-Я][а-я]+ [А-Я][а-я]+$',  # ФИО
+                r'^[А-Я][а-я]+ [А-Я]\.[А-Я]\.$',           # Фамилия И.О.
+                r'^[А-Я]\.[А-Я]\. [А-Я][а-я]+$',           # И.О. Фамилия
+                r'^[А-Я][а-я]+ [А-Я][а-я]+$'               # Фамилия Имя
+            ]
+            return any(re.match(pattern, name) for pattern in russian_patterns)
+        
+        # Проверяем паттерны для английских имен
+        elif re.search(r'[A-Za-z]', name):
+            english_patterns = [
+                r'^[A-Z][a-z]+ [A-Z][a-z]+( [A-Z][a-z]+)?$',  # First Last [Middle]
+                r'^[A-Z][a-z]+, [A-Z]\.[A-Z]\.$',             # Last, F.M.
+                r'^[A-Z]\.[A-Z]\. [A-Z][a-z]+$',              # F.M. Last
+                r'^[A-Z][a-z]+ [A-Z][a-z]+$'                 # First Last
+            ]
+            return any(re.match(pattern, name) for pattern in english_patterns)
+        
+        return False
+
+ 
+    def _calculate_email_match_score(self, name: str, target_email: str) -> float:
+        """Вычисляет соответствие имени с email адресом"""
+        if not target_email or not name:
+            return 0.0
+        
+        # НОВОЕ: Очищаем имя от технических префиксов для корректного сопоставления
+        clean_name = self._clean_name_for_email_matching(name)
+        if not clean_name:
+            return 0.0
+        
+        # Извлекаем локальную часть email
+        email_local = target_email.split('@')[0].lower() if '@' in target_email else target_email.lower()
+        name_lower = clean_name.lower()
+        
+        score = 0.0
+        
+        # Проверяем прямое совпадение полного имени
+        if name_lower in email_local or email_local in name_lower:
+            score += 0.4
+        
+        # Проверяем совпадение частей имени (только реальные части имени)
+        name_parts = self._extract_real_name_parts(clean_name)
+        matched_parts = 0
+        
+        for part in name_parts:
+            if part in email_local:
+                matched_parts += 1
+                score += 0.3
+            elif self._fuzzy_match(part, email_local) > 0.8:
+                matched_parts += 1
+                score += 0.2
+        
+        # Бонус за множественные совпадения
+        if matched_parts >= 2:
+            score += 0.2
+        
+        # Проверяем транслитерацию для русских имен
+        if re.search(r'[А-Яа-я]', clean_name):
+            transliterated = self._simple_transliterate(clean_name).lower()
+            if transliterated != name_lower:
+                if transliterated in email_local or email_local in transliterated:
+                    score += 0.3
+                
+                # Проверяем части транслитерированного имени
+                trans_parts = [part for part in transliterated.split() if len(part) > 2]
+                for part in trans_parts:
+                    if part in email_local:
+                        score += 0.2
+        
+        # Проверяем инициалы (только от реальных частей имени)
+        real_name_parts = [part for part in clean_name.split() if len(part) > 0 and part[0].isupper()]
+        initials = ''.join([part[0].lower() for part in real_name_parts])
+        if len(initials) >= 2 and initials in email_local:
+            score += 0.1
+        
+        return min(score, 1.0)
+    
+    def _clean_name_for_email_matching(self, name: str) -> str:
+        """Очищает имя от технических префиксов для корректного сопоставления с email"""
+        if not name:
+            return ''
+        
+        # Попытка извлечь человеческое имя из технического
+        clean_name = self._extract_human_name_from_technical(name)
+        if clean_name:
+            return clean_name
+        
+        # Если извлечь не удалось, используем оригинальное имя
+        return name
+    
+    def _extract_real_name_parts(self, name: str) -> List[str]:
+        """Извлекает только реальные части имени, исключая технические термины"""
+        if not name:
+            return []
+        
+        parts = name.split()
+        real_parts = []
+        
+        # Технические слова, которые не являются частью имени
+        technical_words = [
+            'антиплагиат', 'antiplagiat', 'система', 'сервис', 'платформа',
+            'программа', 'software', 'system', 'service', 'api', 'bot',
+            'версия', 'version', 'demo', 'test', 'beta', 'alpha'
+        ]
+        
+        for part in parts:
+            part_lower = part.lower()
+            
+            # Пропускаем технические слова
+            if part_lower in technical_words:
+                continue
+            
+            # Пропускаем слишком короткие части (кроме инициалов)
+            if len(part) < 2 and not (len(part) == 2 and part.endswith('.')):
+                continue
+            
+            # Пропускаем части, состоящие только из цифр
+            if part.isdigit():
+                continue
+            
+            # Оставляем только части, похожие на имена
+            if part[0].isupper() and (part[1:].islower() or part.endswith('.')):
+                real_parts.append(part_lower)
+        
+        return real_parts 
     
     def _is_human_name(self, name: str) -> bool:
         """Проверяет, является ли строка человеческим именем"""

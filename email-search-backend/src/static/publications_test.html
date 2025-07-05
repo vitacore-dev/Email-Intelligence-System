@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест анализа публикаций для irinalizinfeld@gmail.com</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .test-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+        }
+
+        .test-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .publication-analysis {
+            margin-top: 30px;
+        }
+
+        .pub-overview {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .pub-overview h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+
+        .overview-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .publication-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #28a745;
+        }
+
+        .pub-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .pub-metadata {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .metadata-section {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .metadata-section h4 {
+            margin: 0 0 10px 0;
+            color: #667eea;
+            font-size: 1rem;
+        }
+
+        .metadata-field {
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .metadata-field strong {
+            color: #333;
+        }
+
+        .thematic-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .tag {
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+        }
+
+        .author-role {
+            background: #28a745;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            margin-right: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 Тест анализа публикаций</h1>
+            <p>Проверка Phase 4.2 для email: <strong>irinalizinfeld@gmail.com</strong></p>
+            <button class="test-btn" onclick="loadPublicationAnalysis()">🔍 Загрузить анализ публикаций</button>
+            <button class="test-btn" onclick="clearResults()">🗑️ Очистить результаты</button>
+        </div>
+
+        <div id="resultsContainer">
+            <!-- Результаты будут загружены здесь -->
+        </div>
+    </div>
+
+    <script>
+        async function loadPublicationAnalysis() {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '<div class="loading">⏳ Загружаем анализ публикаций...</div>';
+
+            try {
+                const response = await fetch('/api/email/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'irinalizinfeld@gmail.com'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayPublicationAnalysis(data);
+
+            } catch (error) {
+                console.error('Ошибка загрузки:', error);
+                container.innerHTML = `
+                    <div class="error">
+                        ❌ Ошибка загрузки данных: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function displayPublicationAnalysis(data) {
+            const container = document.getElementById('resultsContainer');
+            const publications = data.publications || [];
+            const conclusions = data.conclusions || [];
+
+            if (publications.length === 0) {
+                container.innerHTML = `
+                    <div class="error">
+                        📚 Публикации не найдены или анализ Phase 4.2 не был выполнен.
+                        <br>Уверенность идентификации: ${data.basic_info?.confidence_score || 0}
+                    </div>
+                `;
+                return;
+            }
+
+            // Анализируем данные
+            const analysisStats = analyzePublications(publications);
+            const publicationsByYear = groupPublicationsByYear(publications);
+            const researchFields = extractResearchFields(publications);
+
+            let html = `
+                <div class="publication-analysis">
+                    <div class="pub-overview">
+                        <h3>📊 Обзор научной деятельности</h3>
+                        <p><strong>Владелец:</strong> ${data.basic_info?.owner_name || 'Не определено'}</p>
+                        <p><strong>ORCID:</strong> ${data.scientific_identifiers?.orcid_id || 'Не найден'}</p>
+                        
+                        <div class="overview-stats">
+                            <div class="stat-card">
+                                <div class="stat-number">${publications.length}</div>
+                                <div class="stat-label">Публикаций проанализировано</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${analysisStats.uniqueJournals}</div>
+                                <div class="stat-label">Различных журналов</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${analysisStats.recentPublications}</div>
+                                <div class="stat-label">Публикации 2023-2025</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${researchFields.length}</div>
+                                <div class="stat-label">Области исследований</div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 20px;">
+                            <h4>🎯 Основные области исследований:</h4>
+                            <div class="thematic-tags">
+                                ${researchFields.map(field => `<span class="tag">${field}</span>`).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3>📚 Детальный анализ публикаций</h3>
+            `;
+
+            // Группируем по годам для лучшего отображения
+            Object.keys(publicationsByYear).sort((a, b) => b - a).forEach(year => {
+                html += `<h4>📅 ${year} год (${publicationsByYear[year].length} публикаций)</h4>`;
+                
+                publicationsByYear[year].forEach(pub => {
+                    html += createPublicationCard(pub);
+                });
+            });
+
+            // Добавляем выводы из анализа
+            if (conclusions.length > 0) {
+                html += `
+                    <div class="pub-overview" style="margin-top: 30px;">
+                        <h3>💡 Выводы анализа</h3>
+                        <ul>
+                            ${conclusions.map(conclusion => `<li>${conclusion}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function createPublicationCard(pub) {
+            const metadata = pub.metadata || {};
+            const authorRole = pub.author_role || {};
+            const thematic = pub.thematic_classification || {};
+            const originalData = pub.original_data || {};
+
+            return `
+                <div class="publication-item">
+                    <div class="pub-title">
+                        ${metadata.title || originalData.title || 'Без названия'}
+                    </div>
+
+                    <div class="pub-metadata">
+                        <div class="metadata-section">
+                            <h4>📄 Основные данные</h4>
+                            <div class="metadata-field">
+                                <strong>Журнал:</strong> ${metadata.journal || originalData.journal || 'Не указан'}
+                            </div>
+                            <div class="metadata-field">
+                                <strong>Год:</strong> ${metadata.publication_date || originalData.year || 'Не указан'}
+                            </div>
+                            <div class="metadata-field">
+                                <strong>DOI:</strong> ${metadata.doi || 'Не найден'}
+                            </div>
+                            <div class="metadata-field">
+                                <strong>Язык:</strong> ${metadata.language || 'Не определен'}
+                            </div>
+                        </div>
+
+                        <div class="metadata-section">
+                            <h4>👤 Роль автора</h4>
+                            <div class="metadata-field">
+                                <span class="author-role">${authorRole.author_contribution || 'Соавтор'}</span>
+                            </div>
+                            <div class="metadata-field">
+                                <strong>Первый автор:</strong> ${authorRole.is_first_author ? 'Да' : 'Нет'}
+                            </div>
+                            <div class="metadata-field">
+                                <strong>Корреспондирующий:</strong> ${authorRole.is_corresponding_author ? 'Да' : 'Нет'}
+                            </div>
+                            <div class="metadata-field">
+                                <strong>Всего авторов:</strong> ${authorRole.total_authors || 'Не определено'}
+                            </div>
+                        </div>
+
+                        <div class="metadata-section">
+                            <h4>🔬 Тематическая классификация</h4>
+                            <div class="metadata-field">
+                                <strong>Область:</strong> ${thematic.research_field || 'Не определена'}
+                            </div>
+                            <div class="metadata-field">
+                                <strong>Подобласти:</strong> ${thematic.sub_fields?.join(', ') || 'Не определены'}
+                            </div>
+                            <div class="metadata-field">
+                                <strong>Медицинские специальности:</strong> ${thematic.medical_specialties?.join(', ') || 'Не определены'}
+                            </div>
+                            <div class="metadata-field">
+                                <strong>Клиническая значимость:</strong> ${thematic.clinical_relevance || 'Не оценена'}
+                            </div>
+                        </div>
+                    </div>
+
+                    ${pub.analysis_timestamp ? `
+                        <div style="margin-top: 15px; color: #666; font-size: 0.8rem;">
+                            ⏰ Анализ выполнен: ${new Date(pub.analysis_timestamp * 1000).toLocaleString('ru-RU')}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function analyzePublications(publications) {
+            const journals = new Set();
+            let recentCount = 0;
+
+            publications.forEach(pub => {
+                const journal = pub.metadata?.journal || pub.original_data?.journal;
+                if (journal) journals.add(journal);
+
+                const year = parseInt(pub.metadata?.publication_date || pub.original_data?.year);
+                if (year >= 2023) recentCount++;
+            });
+
+            return {
+                uniqueJournals: journals.size,
+                recentPublications: recentCount
+            };
+        }
+
+        function groupPublicationsByYear(publications) {
+            const groups = {};
+            
+            publications.forEach(pub => {
+                const year = pub.metadata?.publication_date || pub.original_data?.year || 'Неизвестно';
+                if (!groups[year]) groups[year] = [];
+                groups[year].push(pub);
+            });
+
+            return groups;
+        }
+
+        function extractResearchFields(publications) {
+            const fields = new Set();
+            
+            publications.forEach(pub => {
+                const thematic = pub.thematic_classification || {};
+                if (thematic.research_field) fields.add(thematic.research_field);
+                if (thematic.sub_fields) {
+                    thematic.sub_fields.forEach(field => fields.add(field));
+                }
+                if (thematic.medical_specialties) {
+                    thematic.medical_specialties.forEach(spec => fields.add(spec));
+                }
+            });
+
+            return Array.from(fields).filter(field => field && field !== 'Не определена');
+        }
+
+        function clearResults() {
+            document.getElementById('resultsContainer').innerHTML = '';
+        }
+    </script>
+</body>
+</html>

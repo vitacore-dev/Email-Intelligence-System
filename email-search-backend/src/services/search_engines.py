@@ -27,9 +27,14 @@ except ImportError:
     EnhancedParserVerifier = None
 
 try:
-    from .enhanced_orcid_service import EnhancedORCIDService
+    from services.enhanced_orcid_service import EnhancedORCIDService
 except ImportError:
     EnhancedORCIDService = None
+
+try:
+    from services.publication_analyzer import PublicationAnalyzer
+except ImportError:
+    PublicationAnalyzer = None
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +69,9 @@ class SearchEngineService:
         # Инициализируем enhanced ORCID service
         self.enhanced_orcid_service = EnhancedORCIDService() if EnhancedORCIDService else None
         
+        # Инициализируем анализатор публикаций
+        self.publication_analyzer = PublicationAnalyzer() if PublicationAnalyzer else None
+        
         logger.info(f"SearchEngineService инициализирован:")
         logger.info(f"  Google API: {'✓' if self.google_api_key else '✗'}")
         logger.info(f"  Bing API: {'✓' if self.bing_api_key else '✗'}")
@@ -72,6 +80,7 @@ class SearchEngineService:
         logger.info(f"  Enhanced NLP Analyzer: {'✓' if self.enhanced_nlp_analyzer else '✗'}")
         logger.info(f"  Enhanced Parser Verifier: {'✓' if self.enhanced_verifier else '✗'}")
         logger.info(f"  Enhanced ORCID Service: {'✓' if self.enhanced_orcid_service else '✗'}")
+        logger.info(f"  Publication Analyzer: {'✓' if self.publication_analyzer else '✗'}")
         
     def search_scopus(self, query: str) -> List[Dict]:
         """Поиск через Scopus API"""
@@ -148,15 +157,19 @@ class SearchEngineService:
         search_queries = self._generate_search_queries(email)
         logger.info(f"Сгенерировано {len(search_queries)} поисковых запросов")
         
-        # Выполняем поиск через Google API (приоритетный метод)
+        # Выполняем поиск через несколько источников с кросс-валидацией
+        search_sources_results = {}
+        
+        # Поиск через Google API (приоритетный метод)
         if self.google_api_key:
             logger.info("Используем Google Search API для поиска")
+            google_all_results = []
             
             for query in search_queries:
                 try:
                     google_results = self._search_google(query)
                     if google_results:
-                        results['search_results'].extend(google_results)
+                        google_all_results.extend(google_results)
                         logger.info(f"Google API вернул {len(google_results)} результатов для '{query}'")
                     else:
                         logger.warning(f"Google API не вернул результатов для '{query}'")
@@ -167,11 +180,41 @@ class SearchEngineService:
                 except Exception as e:
                     logger.error(f"Ошибка Google Search API для '{query}': {str(e)}")
                     continue
+            
+            search_sources_results['google'] = google_all_results
+            results['search_results'].extend(google_all_results)
         else:
             logger.error("Google API ключ не настроен! Невозможно выполнить поиск.")
-            # Если нет Google API, используем fallback
-            logger.info("Используем альтернативный поиск как fallback")
-            for query in search_queries[:10]:  # Ограничиваем количество запросов для альтернативного поиска
+            search_sources_results['google'] = []
+        
+        # Добавляем поиск через Bing API для кросс-валидации
+        if self.bing_api_key:
+            logger.info("Используем Bing Search API для кросс-валидации")
+            bing_all_results = []
+            
+            for query in search_queries[:2]:  # Ограничиваем количество запросов для Bing
+                try:
+                    bing_results = self._search_bing(query)
+                    if bing_results:
+                        bing_all_results.extend(bing_results)
+                        logger.info(f"Bing API вернул {len(bing_results)} результатов для '{query}'")
+                    
+                    time.sleep(0.1)
+                        
+                except Exception as e:
+                    logger.error(f"Ошибка Bing Search API для '{query}': {str(e)}")
+                    continue
+            
+            search_sources_results['bing'] = bing_all_results
+            # Добавляем только уникальные результаты от Bing
+            unique_bing_results = self._filter_unique_results(bing_all_results, results['search_results'])
+            results['search_results'].extend(unique_bing_results)
+            logger.info(f"Добавлено {len(unique_bing_results)} уникальных результатов от Bing")
+        
+        # Fallback к альтернативному поиску, если основные источники не дали результатов
+        if len(results['search_results']) == 0:
+            logger.info("Основные источники не дали результатов, используем альтернативный поиск")
+            for query in search_queries[:3]:  # Ограничиваем количество запросов для альтернативного поиска
                 try:
                     alternative_results = self._search_alternative(query)
                     results['search_results'].extend(alternative_results)
@@ -179,6 +222,18 @@ class SearchEngineService:
                 except Exception as e:
                     logger.error(f"Ошибка альтернативного поиска для '{query}': {str(e)}")
                     continue
+        
+        # Выполняем расширенный поиск по похожим документам
+        if len(results['search_results']) > 0:
+            expanded_results = self._expand_search_with_similarity(email, results['search_results'])
+            if expanded_results:
+                # Добавляем только уникальные результаты
+                unique_expanded_results = self._filter_unique_results(expanded_results, results['search_results'])
+                results['search_results'].extend(unique_expanded_results)
+                logger.info(f"Расширенный поиск добавил {len(unique_expanded_results)} дополнительных результатов")
+        
+        # Сохраняем информацию о источниках для анализа
+        results['search_sources'] = search_sources_results
         
         logger.info(f"Всего найдено {len(results['search_results'])} результатов поиска")
         
@@ -293,6 +348,47 @@ class SearchEngineService:
         if not processed_data['research_interests']:
             processed_data['research_interests'] = self._extract_research_interests(results['search_results'])
         
+        # ФАЗА 4.2: Методика анализа публикаций
+        # Запускаем только если определен владелец email
+        if (processed_data['basic_info']['owner_name'] != 'Не определено' and 
+            processed_data['basic_info']['confidence_score'] > 0.1 and 
+            self.publication_analyzer):
+            
+            logger.info("ФАЗА 4.2: Начинаем глубокий анализ публикаций")
+            
+            # Подготавливаем данные об авторе
+            author_info = {
+                'full_name': processed_data['basic_info']['owner_name'],
+                'orcid_id': processed_data['scientific_identifiers']['orcid_id'],
+                'email': email,
+                'publications': processed_data['publications']
+            }
+            
+            try:
+                # Выполняем глубокий анализ публикаций
+                publications_analysis = self.publication_analyzer.analyze_author_publications(author_info)
+                
+                # Интегрируем результаты анализа в основные данные
+                if publications_analysis and publications_analysis.get('publications_analysis'):
+                    pub_analysis = publications_analysis['publications_analysis']
+                    
+                    # Обновляем публикации расширенными данными
+                    processed_data['publications'] = pub_analysis.get('detailed_publications', processed_data['publications'])
+                    
+                    # Добавляем полный анализ публикаций
+                    processed_data['publication_analysis'] = pub_analysis
+                    
+                    # Обновляем выводы с информацией о публикациях
+                    self._enhance_conclusions_with_publication_analysis(processed_data, pub_analysis)
+                    
+                    logger.info(f"ФАЗА 4.2: Анализ публикаций завершен. Проанализировано {pub_analysis.get('analyzed_publications', 0)} публикаций")
+                    
+            except Exception as e:
+                logger.error(f"Ошибка в ФАЗЕ 4.2 (анализ публикаций): {str(e)}")
+                processed_data['conclusions'].append("Ошибка при глубоком анализе публикаций")
+        else:
+            logger.info("ФАЗА 4.2: Пропускаем анализ публикаций - низкая уверенность в определении владельца")
+        
         # Заменяем необработанные данные анализа на структурированные данные
         results['processed_info'] = processed_data
         
@@ -307,11 +403,236 @@ class SearchEngineService:
         return results
     
     def _generate_search_queries(self, email: str) -> List[str]:
-        """Генерация поисковых запросов для email - только email адрес"""
+        """Генерация поисковых запросов для email с расширенными стратегиями поиска"""
         queries = [
-            # Только прямой поиск email без дополнительных запросов
+            # Прямой поиск email (основной)
             f'"{email}"',  # Точное совпадение email
+            
+            # Поиск с различными вариациями email
+            email,  # Без кавычек для более широкого поиска
         ]
+        
+        # Добавляем варианты поиска для разных доменов, если это возможно
+        username = email.split('@')[0] if '@' in email else email
+        domain = email.split('@')[1] if '@' in email else ''
+        
+        if len(username) > 3:  # Избегаем слишком коротких имен пользователей
+            queries.extend([
+                f'"{username}"',  # Поиск только username
+                f'"{username}" AND "{domain}"',  # Комбинированный поиск
+            ])
+        
+        return queries
+    
+    def _enhance_conclusions_with_publication_analysis(self, processed_data: Dict[str, Any], pub_analysis: Dict[str, Any]) -> None:
+        """Обновляем выводы на основе глубокого анализа публикаций"""
+        try:
+            # Получаем сводку по публикациям
+            summary = pub_analysis.get('publication_summary', {})
+            research_profile = pub_analysis.get('research_profile', {})
+            temporal_analysis = pub_analysis.get('temporal_analysis', {})
+            collaboration_network = pub_analysis.get('collaboration_network', {})
+            
+            # Добавляем выводы о публикациях
+            enhanced_conclusions = []
+            
+            # Общая статистика публикаций
+            total_pubs = summary.get('total_analyzed', 0)
+            if total_pubs > 0:
+                enhanced_conclusions.append(f"Проведен глубокий анализ {total_pubs} публикаций автора")
+            
+            # Информация о ролях автора
+            author_roles = summary.get('author_roles', {})
+            first_author_count = author_roles.get('first_author', 0)
+            corresponding_count = author_roles.get('corresponding_author', 0)
+            
+            if first_author_count > 0:
+                enhanced_conclusions.append(f"Первый автор в {first_author_count} публикациях (основной исследователь)")
+            
+            if corresponding_count > 0:
+                enhanced_conclusions.append(f"Корреспондирующий автор в {corresponding_count} публикациях (руководитель исследований)")
+            
+            # Основные области исследований
+            research_areas = research_profile.get('primary_research_areas', [])
+            if research_areas:
+                main_area = research_areas[0][0] if research_areas[0] else 'Не определено'
+                enhanced_conclusions.append(f"Основная область исследований: {main_area}")
+                
+                if len(research_areas) > 1:
+                    other_areas = [area[0] for area in research_areas[1:3]]
+                    enhanced_conclusions.append(f"Дополнительные области: {', '.join(other_areas)}")
+            
+            # Специализация
+            specialization_score = research_profile.get('specialization_score', 0)
+            if specialization_score > 0.7:
+                enhanced_conclusions.append("Высокоспециализированный исследователь в основной области")
+            elif specialization_score > 0.4:
+                enhanced_conclusions.append("Умеренно специализированный исследователь")
+            else:
+                enhanced_conclusions.append("Междисциплинарный исследователь")
+            
+            # Стадия карьеры
+            career_stage = temporal_analysis.get('career_stage', '')
+            if career_stage:
+                enhanced_conclusions.append(f"Стадия карьеры: {career_stage}")
+            
+            # Активность
+            recent_activity = temporal_analysis.get('recent_activity', {})
+            recent_pubs = recent_activity.get('publications_last_3_years', 0)
+            if recent_pubs > 0:
+                enhanced_conclusions.append(f"Опубликовано {recent_pubs} работ за последние 3 года (активная научная деятельность)")
+            
+            # Сотрудничество
+            collaboration_score = collaboration_network.get('collaboration_score', 0)
+            if collaboration_score > 3:
+                enhanced_conclusions.append("Активно сотрудничает с другими исследователями")
+            
+            # Метрики цитирования
+            avg_citations = summary.get('average_citations', 0)
+            h_index = summary.get('h_index_estimate', 0)
+            
+            if h_index > 0:
+                enhanced_conclusions.append(f"Оценка h-индекса: {h_index}")
+            
+            if avg_citations > 0:
+                enhanced_conclusions.append(f"Среднее количество цитирований на публикацию: {avg_citations:.1f}")
+            
+            # Методы исследования
+            detailed_pubs = pub_analysis.get('detailed_publications', [])
+            research_types = set()
+            methodologies = set()
+            
+            for pub in detailed_pubs[:10]:  # Анализируем первые 10
+                content_analysis = pub.get('content_analysis', {})
+                research_type = content_analysis.get('research_type', '')
+                methodology = content_analysis.get('methodology', '')
+                
+                if research_type and research_type != 'Не определен':
+                    research_types.add(research_type)
+                
+                if methodology and methodology != 'Не определена':
+                    methodologies.update(methodology.split(', '))
+            
+            if research_types:
+                enhanced_conclusions.append(f"Типы исследований: {', '.join(list(research_types)[:3])}")
+            
+            if methodologies:
+                clean_methodologies = [m for m in methodologies if m.strip()]
+                if clean_methodologies:
+                    enhanced_conclusions.append(f"Методологии: {', '.join(list(clean_methodologies)[:3])}")
+            
+            # Добавляем новые выводы к существующим
+            processed_data['conclusions'].extend(enhanced_conclusions)
+            
+            # Добавляем финальный вывод
+            processed_data['conclusions'].append("Проведен комплексный анализ научной деятельности автора")
+            
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении выводов на основе анализа публикаций: {str(e)}")
+    
+    def _filter_unique_results(self, new_results: List[Dict], existing_results: List[Dict]) -> List[Dict]:
+        """Фильтруем уникальные результаты по URL"""
+        existing_urls = {result.get('link', '') for result in existing_results}
+        unique_results = []
+        
+        for result in new_results:
+            url = result.get('link', '')
+            if url and url not in existing_urls:
+                unique_results.append(result)
+                existing_urls.add(url)
+        
+        return unique_results
+    
+    def _expand_search_with_similarity(self, email: str, initial_results: List[Dict]) -> List[Dict]:
+        """Расширяем поиск на основе похожих документов"""
+        expanded_results = []
+        
+        try:
+            # Извлекаем ключевые слова из начальных результатов
+            keywords = self._extract_keywords_from_results(initial_results)
+            
+            # Извлекаем домены с научными публикациями
+            scientific_domains = self._extract_scientific_domains(initial_results)
+            
+            # Генерируем дополнительные поисковые запросы
+            similarity_queries = self._generate_similarity_queries(email, keywords, scientific_domains)
+            
+            # Выполняем поиск по дополнительным запросам
+            for query in similarity_queries[:3]:  # Ограничиваем количество запросов
+                if self.google_api_key:
+                    similarity_results = self._search_google(query, max_results=20)
+                    expanded_results.extend(similarity_results)
+                    time.sleep(0.1)
+            
+            logger.info(f"Расширенный поиск нашел {len(expanded_results)} дополнительных результатов")
+            
+        except Exception as e:
+            logger.error(f"Ошибка в расширенном поиске: {str(e)}")
+        
+        return expanded_results
+    
+    def _extract_keywords_from_results(self, results: List[Dict]) -> List[str]:
+        """Извлекаем ключевые слова из результатов поиска"""
+        keywords = set()
+        
+        # Научные термины и области
+        scientific_terms = [
+            'research', 'publication', 'journal', 'article', 'paper', 'study',
+            'исследование', 'публикация', 'журнал', 'статья', 'работа',
+            'medicine', 'biology', 'physics', 'chemistry', 'mathematics',
+            'медицина', 'биология', 'физика', 'химия', 'математика'
+        ]
+        
+        for result in results[:5]:  # Анализируем только первые результаты
+            text = f"{result.get('title', '')} {result.get('snippet', '')}".lower()
+            
+            for term in scientific_terms:
+                if term.lower() in text:
+                    keywords.add(term)
+        
+        return list(keywords)[:5]  # Возвращаем не более 5 ключевых слов
+    
+    def _extract_scientific_domains(self, results: List[Dict]) -> List[str]:
+        """Извлекаем научные домены из URL"""
+        domains = set()
+        scientific_domains = [
+            'researchgate.net', 'academia.edu', 'scholar.google',
+            'pubmed.ncbi.nlm.nih.gov', 'arxiv.org', 'ieee.org',
+            'cyberleninka.ru', 'elibrary.ru', 'ras.ru', 'scopus.com',
+            'sciencedirect.com', 'springer.com', 'nature.com'
+        ]
+        
+        for result in results:
+            url = result.get('link', '')
+            for domain in scientific_domains:
+                if domain in url:
+                    domains.add(domain)
+        
+        return list(domains)
+    
+    def _generate_similarity_queries(self, email: str, keywords: List[str], domains: List[str]) -> List[str]:
+        """Генерируем запросы для поиска похожих документов"""
+        username = email.split('@')[0] if '@' in email else email
+        domain = email.split('@')[1] if '@' in email else ''
+        
+        queries = []
+        
+        # Комбинируем username с ключевыми словами
+        if keywords and len(username) > 3:
+            for keyword in keywords[:2]:
+                queries.append(f'"{username}" AND "{keyword}"')
+        
+        # Поиск по научным доменам
+        if domains and len(username) > 3:
+            for domain_url in domains[:2]:
+                queries.append(f'site:{domain_url} "{username}"')
+        
+        # Общие научные поисковые запросы
+        if len(username) > 4:
+            queries.extend([
+                f'"{username}" AND (author OR "автор")',
+                f'"{username}" AND (publication OR "публикация")',
+            ])
         
         return queries
     

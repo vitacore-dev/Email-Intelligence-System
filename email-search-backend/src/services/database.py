@@ -169,14 +169,15 @@ class DatabaseService:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
-                # Используем INSERT OR REPLACE для обновления существующих записей
+                # Удаляем старые записи перед вставкой новых (для обновления)
+                cursor.execute('DELETE FROM search_cache WHERE email_hash = ?', (email_hash,))
+                
+                # Вставляем новые данные
                 cursor.execute('''
-                    INSERT OR REPLACE INTO search_cache 
+                    INSERT INTO search_cache 
                     (email_hash, email, search_results, expires_at, search_method, hit_count)
-                    VALUES (?, ?, ?, ?, ?, COALESCE(
-                        (SELECT hit_count FROM search_cache WHERE email_hash = ?), 0
-                    ))
-                ''', (email_hash, email, search_results_json, expires_at, search_method, email_hash))
+                    VALUES (?, ?, ?, ?, ?, 0)
+                ''', (email_hash, email, search_results_json, expires_at, search_method))
                 
                 conn.commit()
                 logger.info(f"Результат кэширован для email: {email}")

@@ -1,0 +1,184 @@
+/* Стили для улучшения отображения публикаций */
+
+.publications-container {
+    margin-bottom: 2rem;
+}
+
+.publication-item {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.publication-item:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #007bff;
+}
+
+.publication-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.publication-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.publication-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.publication-info strong {
+    color: #495057;
+    min-width: 100px;
+    font-weight: 600;
+}
+
+.publication-link {
+    color: #ffffff !important;
+    text-decoration: none !important;
+    font-weight: 600 !important;
+    padding: 8px 16px !important;
+    border-radius: 4px !important;
+    background-color: #ff0000 !important;
+    border: 2px solid #000000 !important;
+    transition: all 0.3s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.25rem !important;
+    font-size: 14px !important;
+    min-height: 30px !important;
+}
+
+.publication-link:hover {
+    color: #0056b3;
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    text-decoration: none;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+}
+
+.publication-link:active {
+    transform: translateY(0);
+}
+
+.relevance-score {
+    background-color: #e8f5e8;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 500;
+    color: #2d5016;
+}
+
+/* Стили для различных полей публикации */
+.publication-info:has(strong:contains("Аннотация")) {
+    background-color: #f8f9fa;
+    padding: 0.75rem;
+    border-radius: 6px;
+    border-left: 4px solid #6c757d;
+    margin-top: 0.5rem;
+}
+
+.publication-info:has(strong:contains("DOI")) {
+    font-family: 'Courier New', monospace;
+    background-color: #fff5ee;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+.publication-info:has(strong:contains("Год")) {
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Адаптивные стили */
+@media (max-width: 768px) {
+    .publication-item {
+        padding: 1rem;
+    }
+    
+    .publication-info {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    
+    .publication-info strong {
+        min-width: auto;
+    }
+    
+    .publication-link {
+        align-self: flex-start;
+        margin-top: 0.25rem;
+    }
+}
+
+/* Темная тема */
+@media (prefers-color-scheme: dark) {
+    .publication-item {
+        background-color: #2d3748;
+        border-color: #4a5568;
+        color: #e2e8f0;
+    }
+    
+    .publication-item:hover {
+        border-color: #63b3ed;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    
+    .publication-title {
+        color: #f7fafc;
+    }
+    
+    .publication-info strong {
+        color: #cbd5e0;
+    }
+    
+    .publication-link {
+        color: #63b3ed;
+        background-color: #2a4365;
+        border-color: #3182ce;
+    }
+    
+    .publication-link:hover {
+        color: #90cdf4;
+        background-color: #2c5282;
+        border-color: #63b3ed;
+    }
+    
+    .relevance-score {
+        background-color: #22543d;
+        color: #9ae6b4;
+    }
+    
+    .publication-info:has(strong:contains("Аннотация")) {
+        background-color: #1a202c;
+        border-left-color: #4a5568;
+    }
+    
+    .publication-info:has(strong:contains("DOI")) {
+        background-color: #2d3748;
+    }
+}
+
+/* Диагностический стиль для ссылок в Timeline */
+.timeline-link .publication-link {
+    background-color: #00ff00 !important;
+    color: #000000 !important;
+    border: 3px solid #ff0000 !important;
+    padding: 10px 20px !important;
+    font-size: 16px !important;
+    font-weight: bold !important;
+}

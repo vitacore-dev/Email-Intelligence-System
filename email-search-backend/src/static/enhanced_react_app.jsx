@@ -330,8 +330,14 @@ const WebpageAnalysis = ({ data }) => {
 // Компонент для публикаций
 const Publications = ({ data }) => {
   const publications = data?.publications || [];
+  
+  // Отладочная информация
+  console.log('Publications: data received:', data);
+  console.log('Publications: publications array:', publications);
+  console.log('Publications: publications length:', publications.length);
 
   if (publications.length === 0) {
+    console.log('Publications: Показываем ошибку - нет публикаций');
     return (
       <div className="error-message">
         Публикации не найдены или не удалось их извлечь из анализируемых источников.
@@ -347,20 +353,41 @@ const Publications = ({ data }) => {
           <div className="publication-title">{pub.title || 'Без названия'}</div>
           <div className="publication-details">
             <div className="publication-info">
-              <strong>Авторы:</strong> {pub.authors || 'Не указаны'}
+              <strong>Авторы:</strong> {Array.isArray(pub.authors) ? pub.authors.join(', ') : (pub.authors || 'Не указаны')}
             </div>
             <div className="publication-info">
-              <strong>Журнал:</strong> {pub.journal || 'Не указан'}
+              <strong>Источник:</strong> {pub.source || pub.journal || 'Не указан'}
             </div>
             <div className="publication-info">
               <strong>Год:</strong> {pub.year || 'Не указан'}
             </div>
-            <div className="publication-info">
-              <strong>DOI:</strong> {pub.doi || 'Не найден'}
-            </div>
+            {pub.doi && (
+              <div className="publication-info">
+                <strong>DOI:</strong> {pub.doi}
+              </div>
+            )}
             {pub.url && (
               <div className="publication-info">
-                <strong>URL:</strong> <a href={pub.url} target="_blank" rel="noopener noreferrer">{pub.url}</a>
+                <strong>Ссылка:</strong>{' '}
+                <a 
+                  href={pub.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="publication-link"
+                  title="Перейти к публикации"
+                >
+                  Открыть публикацию 🔗
+                </a>
+              </div>
+            )}
+            {pub.abstract && (
+              <div className="publication-info">
+                <strong>Аннотация:</strong> {pub.abstract.length > 200 ? pub.abstract.substring(0, 200) + '...' : pub.abstract}
+              </div>
+            )}
+            {pub.relevance_score && (
+              <div className="publication-info relevance-score">
+                <strong>Релевантность:</strong> {Math.round(pub.relevance_score * 10) / 10}/10
               </div>
             )}
           </div>
@@ -375,18 +402,25 @@ const Timeline = ({ data }) => {
   const publications = data?.publications || [];
   const searchMetadata = data?.search_metadata || {};
   
+  // Отладочная информация
+  console.log('Timeline: publications data:', publications);
+  
   let timelineEvents = [];
   
   // Добавляем публикации в timeline
   publications.forEach(pub => {
+    console.log('Processing publication:', pub);
     if (pub.year) {
-      timelineEvents.push({
+      const event = {
         year: parseInt(pub.year),
         type: 'publication',
         title: pub.title || 'Публикация без названия',
-        description: `Журнал: ${pub.journal || 'Не указан'}`,
-        authors: pub.authors || 'Авторы не указаны'
-      });
+        description: `Источник: ${pub.source || pub.journal || 'Не указан'}`,
+        authors: Array.isArray(pub.authors) ? pub.authors.join(', ') : (pub.authors || 'Авторы не указаны'),
+        url: pub.url
+      };
+      console.log('Created timeline event:', event);
+      timelineEvents.push(event);
     }
   });
   
@@ -426,6 +460,18 @@ const Timeline = ({ data }) => {
                 <p className="timeline-description">{event.description}</p>
                 {event.authors && (
                   <p className="timeline-authors">Авторы: {event.authors}</p>
+                )}
+                {event.url && (
+                  <p className="timeline-link">
+                    <a 
+                      href={event.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="publication-link"
+                    >
+                      Перейти к публикации 🔗
+                    </a>
+                  </p>
                 )}
               </div>
               <div className="timeline-year">
