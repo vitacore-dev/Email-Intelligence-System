@@ -1611,10 +1611,10 @@ class SearchEngineService:
         score = 0.0
         detailed_scores = {}
         
-        # 1. Фактор позиции (чем раньше найден, тем выше score) - вес 25%
+        # 1. Фактор позиции (чем раньше найден, тем выше score) - вес 15%
         position_score = max(0, 1.0 - (orcid_info['position'] / 100))
-        score += position_score * 0.25
-        detailed_scores['position'] = position_score * 0.25
+        score += position_score * 0.15
+        detailed_scores['position'] = position_score * 0.15
         
         # 2. Фактор прямого URL ORCID - вес 20%
         direct_url_score = 0.0
@@ -1642,12 +1642,12 @@ class SearchEngineService:
         score += domain_score * 0.15
         detailed_scores['domain'] = domain_score * 0.15
         
-        # 5. НОВЫЙ: Семантическая близость к владельцу email - вес 15%
+        # 5. НОВЫЙ: Семантическая близость к владельцу email - вес 25%
         name_proximity_score = 0.0
         if owner_name:
             name_proximity_score = self._calculate_name_proximity_score(orcid_info, owner_name)
-            score += name_proximity_score * 0.15
-        detailed_scores['name_proximity'] = name_proximity_score * 0.15
+            score += name_proximity_score * 0.25
+        detailed_scores['name_proximity'] = name_proximity_score * 0.25
         
         # 6. НОВЫЙ: Анализ доменной принадлежности по email - вес 10%
         domain_affinity_score = 0.0

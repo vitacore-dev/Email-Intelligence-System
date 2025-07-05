@@ -431,9 +431,23 @@ const EmailSearch = () => {
                   {results.publications.map((pub, index) => (
                     <div key={index} className="bg-gray-50 p-4 rounded-lg">
                       <h4 className="font-medium">{pub.title}</h4>
-                      <p className="text-sm text-gray-600">{pub.journal}</p>
+                      <p className="text-sm text-gray-600">{pub.journal || pub.source}</p>
                       {pub.authors && <p className="text-sm text-gray-600">Авторы: {pub.authors}</p>}
+                      {pub.year && <p className="text-sm text-gray-600">Год: {pub.year}</p>}
                       {pub.doi && <p className="text-sm text-blue-600">DOI: {pub.doi}</p>}
+                      {pub.url && (
+                        <p className="text-sm">
+                          <strong>Ссылка:</strong>{' '}
+                          <a 
+                            href={pub.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            Перейти к публикации
+                          </a>
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
